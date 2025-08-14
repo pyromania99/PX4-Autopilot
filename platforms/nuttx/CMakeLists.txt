@@ -322,8 +322,23 @@ endif()
 
 # create .px4 with parameter and airframe metadata
 if (TARGET parameters_xml AND TARGET airframes_xml)
-
 	string(REPLACE ".elf" ".px4" fw_package ${PX4_BINARY_DIR}/${FW_NAME})
+
+	# Derive artifact basename for manifest
+	get_filename_component(FW_PACKAGE_BASENAME ${fw_package} NAME)
+	set(MANIFEST_JSON ${PX4_BINARY_DIR}/manifest.json)
+	add_custom_command(
+		OUTPUT ${MANIFEST_JSON}
+		COMMAND
+			${PYTHON_EXECUTABLE} ${PX4_SOURCE_DIR}/Tools/gen_board_manifest_from_defconfig.py
+				--defconfig ${PX4_SOURCE_DIR}/boards/${PX4_BOARD_VENDOR}/${PX4_BOARD_MODEL}/nuttx-config/nsh/defconfig
+				> ${MANIFEST_JSON}
+		DEPENDS
+			${PX4_SOURCE_DIR}/boards/${PX4_BOARD_VENDOR}/${PX4_BOARD_MODEL}/nuttx-config/nsh/defconfig
+			${PX4_SOURCE_DIR}/Tools/gen_board_manifest_from_defconfig.py
+		COMMENT "Generating board specific manifest from defconfig"
+		VERBATIM
+	)
 
 	add_custom_command(
 		OUTPUT ${fw_package}
@@ -333,11 +348,14 @@ if (TARGET parameters_xml AND TARGET airframes_xml)
 				--git_identity ${PX4_SOURCE_DIR}
 				--parameter_xml ${PX4_BINARY_DIR}/parameters.xml
 				--airframe_xml ${PX4_BINARY_DIR}/airframes.xml
-				--image ${PX4_BINARY_DIR}/${PX4_CONFIG}.bin > ${fw_package}
+				--image ${PX4_BINARY_DIR}/${PX4_CONFIG}.bin
+				--manifest_json ${MANIFEST_JSON}
+				> ${fw_package}
 		DEPENDS
 			${PX4_BINARY_DIR}/${PX4_CONFIG}.bin
 			airframes_xml
 			parameters_xml
+			${MANIFEST_JSON}
 		COMMENT "Creating ${fw_package}"
 		WORKING_DIRECTORY ${PX4_BINARY_DIR}
 		)
