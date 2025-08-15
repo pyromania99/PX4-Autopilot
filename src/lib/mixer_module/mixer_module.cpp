@@ -462,6 +462,17 @@ bool MixingOutput::update()
 			_actuator_test.overrideValues(outputs, _max_num_outputs);
 		}
 
+		// Check for motor kill switch 2 and override motor 1 if activated
+		manual_control_switches_s manual_switches{};
+		if (_manual_control_switches_sub.update(&manual_switches)) {
+			if (manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON) {
+				// Kill motor 1 (index 0) by setting it to disarmed value
+				if (_max_num_outputs > 0) {
+					outputs[0] = NAN; // This will be converted to disarmed value in limitAndUpdateOutputs
+				}
+			}
+		}
+
 		limitAndUpdateOutputs(outputs, has_updates);
 	}
 

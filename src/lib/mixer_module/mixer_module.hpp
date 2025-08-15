@@ -60,6 +60,7 @@
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/actuator_outputs.h>
 #include <uORB/topics/parameter_update.h>
+#include <uORB/topics/manual_control_switches.h>
 
 using namespace time_literals;
 
@@ -254,6 +255,7 @@ private:
 	const bool _output_ramp_up; ///< if true, motors will ramp up from disarmed to min_output after arming
 
 	uORB::Subscription _armed_sub{ORB_ID(actuator_armed)};
+	uORB::Subscription _manual_control_switches_sub{ORB_ID(manual_control_switches)};
 
 	uORB::PublicationMulti<actuator_outputs_s> _outputs_pub{ORB_ID(actuator_outputs)};
 
