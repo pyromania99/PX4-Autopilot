@@ -260,6 +260,7 @@ private:
 	uORB::PublicationMulti<actuator_outputs_s> _outputs_pub{ORB_ID(actuator_outputs)};
 
 	actuator_armed_s _armed{};
+	manual_control_switches_s _manual_switches{};
 
 	unsigned _max_topic_update_interval_us{0}; ///< max topic update interval (0=unlimited)
 
