@@ -438,15 +438,29 @@ bool MixingOutput::update()
 	bool all_disabled = true;
 	_reversible_mask = 0;
 
+	// Update manual switches state (but don't require new data every time)
+	manual_control_switches_s manual_switches{};
+	_manual_control_switches_sub.update(&manual_switches);
+
 	for (int i = 0; i < _max_num_outputs; ++i) {
 		if (_functions[i]) {
 			all_disabled = false;
-
 			if (_armed.armed || (_armed.prearmed && _functions[i]->allowPrearmControl())) {
-				outputs[i] = _functions[i]->value(_function_assignment[i]);
+				// Check if this is motor 1 (index 0) and kill switch 2 is active
+				bool m1_killed = (i == 0 && manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON);
 
+				if (m1_killed) {
+					outputs[i] = NAN;
+					PX4_INFO("Motor[%d] KILLED by switch", i);
+				} else {
+					outputs[i] = _functions[i]->value(_function_assignment[i]);
+					if (i < 4) {  // Only print for first 4 motors to avoid spam
+						PX4_INFO("Motor[%d] = %f", i, (double)outputs[i]);
+					}
+				}
 			} else {
 				outputs[i] = NAN;
+				// PX4_ERR("Output[%d] assigned NAN (disarmed)", i);
 			}
 
 			_reversible_mask |= (uint32_t)_functions[i]->reversible(_function_assignment[i]) << i;
@@ -460,17 +474,6 @@ bool MixingOutput::update()
 	if (!all_disabled || !_was_all_disabled) {
 		if (!_armed.armed && !_armed.kill) {
 			_actuator_test.overrideValues(outputs, _max_num_outputs);
-		}
-
-		// Check for motor kill switch 2 and override motor 1 if activated
-		manual_control_switches_s manual_switches{};
-		if (_manual_control_switches_sub.update(&manual_switches)) {
-			if (manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON) {
-				// Kill motor 1 (index 0) by setting it to disarmed value
-				if (_max_num_outputs > 0) {
-					outputs[0] = NAN; // This will be converted to disarmed value in limitAndUpdateOutputs
-				}
-			}
 		}
 
 		limitAndUpdateOutputs(outputs, has_updates);
