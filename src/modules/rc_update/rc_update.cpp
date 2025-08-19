@@ -350,6 +350,7 @@ void RCUpdate::Run()
 		return;
 	}
 
+	PX4_ERR("RC Update Run() called");
 	perf_begin(_loop_perf);
 	perf_count(_loop_interval_perf);
 
@@ -365,10 +366,14 @@ void RCUpdate::Run()
 
 	rc_parameter_map_poll();
 
+	// Update cached yaw angle for coordinate transformations
+	UpdateCachedYaw();
+
 	/* read low-level values from FMU or IO RC inputs (PPM, Spektrum, S.Bus) */
 	input_rc_s input_rc;
 
 	if (_input_rc_sub.update(&input_rc)) {
+		PX4_ERR("RC input received - channels: %d, signal_lost: %d", input_rc.channel_count, (int)input_rc.rc_lost);
 
 		// warn if the channel count is changing (possibly indication of error)
 		if (!input_rc.rc_lost) {
@@ -674,6 +679,20 @@ void RCUpdate::UpdateManualSwitches(const hrt_abstime &timestamp_sample)
 	_manual_switches_previous = switches;
 }
 
+void RCUpdate::UpdateCachedYaw()
+{
+	vehicle_attitude_s vehicle_attitude;
+	if (_vehicle_attitude_sub.copy(&vehicle_attitude)) {
+		// Extract yaw angle from quaternion
+		matrix::Quatf q(vehicle_attitude.q);
+		matrix::Eulerf euler = q;  // Convert quaternion to Euler angles
+		_cached_yaw = euler.psi();   // Get yaw angle
+		_yaw_valid = true;
+
+		PX4_WARN("Updated cached yaw: %.3f", (double)_cached_yaw);
+	}
+}
+
 void RCUpdate::UpdateManualControlInput(const hrt_abstime &timestamp_sample)
 {
 	manual_control_setpoint_s manual_control_input{};
@@ -681,8 +700,33 @@ void RCUpdate::UpdateManualControlInput(const hrt_abstime &timestamp_sample)
 	manual_control_input.data_source = manual_control_setpoint_s::SOURCE_RC;
 
 	// limit controls
-	manual_control_input.roll = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
-	manual_control_input.pitch = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
+	float roll_ned = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
+	float pitch_ned = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
+
+	PX4_WARN("RC Update: roll_ned=%.3f, pitch_ned=%.3f", (double)roll_ned, (double)pitch_ned);
+
+	// Use cached yaw angle for NED to body frame conversion
+	if (_yaw_valid) {
+		// Convert NED frame roll/pitch commands to body frame
+		// In NED: roll_ned = rotation around North axis, pitch_ned = rotation around East axis
+		// In Body: roll_body = rotation around Forward axis, pitch_body = rotation around Right axis
+		//
+		// The transformation accounts for vehicle yaw:
+		// roll_body = roll_ned * cos(yaw) + pitch_ned * sin(yaw)
+		// pitch_body = -roll_ned * sin(yaw) + pitch_ned * cos(yaw)
+
+		float cos_yaw = cosf(_cached_yaw);
+		float sin_yaw = sinf(_cached_yaw);
+		PX4_ERR("Using cached yaw=%.3f, cos_yaw=%.3f, sin_yaw=%.3f", (double)_cached_yaw, (double)cos_yaw, (double)sin_yaw);
+		manual_control_input.roll = roll_ned * cos_yaw + pitch_ned * sin_yaw;
+		manual_control_input.pitch = -roll_ned * sin_yaw + pitch_ned * cos_yaw;
+	} else {
+		PX4_ERR("No valid cached yaw data, using fallback");
+		// Fallback if yaw is not valid
+		manual_control_input.roll = roll_ned;
+		manual_control_input.pitch = pitch_ned;
+	}
+
 	manual_control_input.yaw = get_rc_value(rc_channels_s::FUNCTION_YAW,     -1.f, 1.f);
 	manual_control_input.throttle = get_rc_value(rc_channels_s::FUNCTION_THROTTLE, -1.f, 1.f);
 	manual_control_input.flaps = get_rc_value(rc_channels_s::FUNCTION_FLAPS,   -1.f, 1.f);

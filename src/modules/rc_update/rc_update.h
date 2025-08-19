@@ -49,6 +49,7 @@
 #include <lib/hysteresis/hysteresis.h>
 #include <lib/mathlib/mathlib.h>
 #include <lib/perf/perf_counter.h>
+#include <matrix/math.hpp>
 #include <uORB/Publication.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/Subscription.hpp>
@@ -59,6 +60,7 @@
 #include <uORB/topics/rc_channels.h>
 #include <uORB/topics/rc_parameter_map.h>
 #include <uORB/topics/parameter_update.h>
+#include <uORB/topics/vehicle_attitude.h>
 
 using namespace time_literals;
 
@@ -106,6 +108,11 @@ protected:
 
 	void		UpdateManualControlInput(const hrt_abstime &timestamp_sample);
 	void		UpdateManualSwitches(const hrt_abstime &timestamp_sample);
+
+	/**
+	 * Update cached vehicle yaw angle for coordinate transformations
+	 */
+	void		UpdateCachedYaw();
 
 	/**
 	 * Update our local parameter cache.
@@ -173,6 +180,7 @@ protected:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::Subscription _rc_parameter_map_sub{ORB_ID(rc_parameter_map)};
+	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
 
 	uORB::Publication<rc_channels_s> _rc_channels_pub{ORB_ID(rc_channels)};
 	uORB::PublicationMulti<manual_control_setpoint_s> _manual_control_input_pub{ORB_ID(manual_control_input)};
@@ -202,6 +210,10 @@ protected:
 	systemlib::Hysteresis _rc_signal_lost_hysteresis{true};
 
 	uint8_t _channel_count_max{0};
+
+	// Cached vehicle yaw angle for NED to body frame conversion
+	float _cached_yaw{0.0f};
+	bool _yaw_valid{false};
 
 	perf_counter_t _loop_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 	perf_counter_t _loop_interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": cycle interval")};

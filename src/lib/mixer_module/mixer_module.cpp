@@ -459,9 +459,9 @@ bool MixingOutput::update()
 					PX4_INFO("Motor[%d] KILLED by switch (switch_val=%d)", i, _manual_switches.kill_switch_2);
 				} else {
 					outputs[i] = _functions[i]->value(_function_assignment[i]);
-					if (i == 0) {  // Only print for motor 0 to track its state
-						PX4_INFO("Motor[%d] = %f (switch_val=%d)", i, (double)outputs[i], _manual_switches.kill_switch_2);
-					}
+					// if (i == 0) {  // Only print for motor 0 to track its state
+					// 	PX4_INFO("Motor[%d] = %f (switch_val=%d)", i, (double)outputs[i], _manual_switches.kill_switch_2);
+					// }
 				}
 			} else {
 				outputs[i] = NAN;

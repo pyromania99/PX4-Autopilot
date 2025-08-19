@@ -121,6 +121,23 @@ void ManualControl::processInput(hrt_abstime now)
 						     || (fabsf(_yaw_diff.update(_selector.setpoint().yaw, dt_s)) > minimum_stick_change)
 						     || (fabsf(_throttle_diff.update(_selector.setpoint().throttle, dt_s)) > minimum_stick_change);
 
+		// Apply NED to body frame coordinate transformation for pitch and roll
+		vehicle_attitude_s vehicle_attitude;
+		if (_vehicle_attitude_sub.copy(&vehicle_attitude)) {
+			// Get current yaw angle
+			matrix::Eulerf euler = matrix::Quatf(vehicle_attitude.q);
+			const float yaw = euler.psi();
+			
+			// Store original NED frame commands
+			const float ned_pitch = _selector.setpoint().pitch;
+			const float ned_roll = _selector.setpoint().roll;
+			
+			// Transform to body frame: [body_x; body_y] = R_z(-yaw) * [ned_x; ned_y]
+			// Where ned_x=pitch_forward and ned_y=roll_right in NED frame
+			_selector.setpoint().pitch = ned_pitch * cosf(-yaw) - ned_roll * sinf(-yaw);
+			_selector.setpoint().roll = ned_pitch * sinf(-yaw) + ned_roll * cosf(-yaw);
+		}
+
 		_selector.setpoint().timestamp = now;
 		_manual_control_setpoint_pub.publish(_selector.setpoint());
 
