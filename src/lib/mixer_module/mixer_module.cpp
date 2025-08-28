@@ -35,6 +35,7 @@
 
 #include <uORB/Publication.hpp>
 #include <px4_platform_common/log.h>
+#include <cstdlib>
 
 using namespace time_literals;
 
@@ -403,6 +404,9 @@ void MixingOutput::unregister()
 	}
 }
 
+int j = 0;
+static int prev_kill_switch_2 = manual_control_switches_s::SWITCH_POS_NONE;
+
 bool MixingOutput::update()
 {
 	// check arming state
@@ -421,10 +425,19 @@ bool MixingOutput::update()
 	// check manual control switches state
 	manual_control_switches_s manual_switches{};
 	if (_manual_control_switches_sub.update(&manual_switches)) {
-		// Update our cached switch state when new data arrives
 		_manual_switches = manual_switches;
-		PX4_INFO("Switch update: kill_switch_2=%d, timestamp=%lu",
-			_manual_switches.kill_switch_2, (unsigned long)_manual_switches.timestamp);
+
+		// PX4_INFO("Switch update: kill_switch_2=%d, timestamp=%lu",
+		// 	_manual_switches.kill_switch_2, (unsigned long)_manual_switches.timestamp);
+
+		if (prev_kill_switch_2 != _manual_switches.kill_switch_2 && _manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON)  {
+			PX4_INFO("_max_num_outputs = %d", _max_num_outputs);  // Add this line
+			j = rand() % 4;
+			j = (j==2) ? 7 : j;
+			PX4_INFO("Kill switch 2 changed: %d -> %d,  j = %d", prev_kill_switch_2, _manual_switches.kill_switch_2, j);
+		}
+		prev_kill_switch_2 = _manual_switches.kill_switch_2;
+
 	}
 
 	// only used for sitl with lockstep
@@ -452,11 +465,11 @@ bool MixingOutput::update()
 			all_disabled = false;
 			if (_armed.armed || (_armed.prearmed && _functions[i]->allowPrearmControl())) {
 				// Check if this is motor 1 (index 0) and kill switch 2 is active
-				bool m1_killed = (i == 0 && _manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON);
+				bool m1_killed = (i == j && _manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON);
 
 				if (m1_killed) {
 					outputs[i] = NAN;
-					PX4_INFO("Motor[%d] KILLED by switch (switch_val=%d)", i, _manual_switches.kill_switch_2);
+					// PX4_INFO("Motor[%d] KILLED by switch (switch_val=%d)", i, _manual_switches.kill_switch_2);
 				} else {
 					outputs[i] = _functions[i]->value(_function_assignment[i]);
 					// if (i == 0) {  // Only print for motor 0 to track its state

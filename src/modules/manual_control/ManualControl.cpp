@@ -137,10 +137,9 @@ void ManualControl::processInput(hrt_abstime now)
 			_selector.setpoint().pitch = ned_pitch * cosf(yaw) + ned_roll * sinf(yaw);
 			_selector.setpoint().roll = -ned_pitch * sinf(yaw) + ned_roll * cosf(yaw);
 
-			PX4_ERR("YAW: %.3f, NED_PITCH: %.3f, NED_ROLL: %.3f, BODY_PITCH: %.3f, BODY_ROLL: %.3f\n",
-				(double)yaw, (double)ned_pitch, (double)ned_roll,
-				(double)_selector.setpoint().pitch, (double)_selector.setpoint().roll);
-
+			// PX4_ERR("YAW: %.3f, NED_PITCH: %.3f, NED_ROLL: %.3f, BODY_PITCH: %.3f, BODY_ROLL: %.3f\n",
+			// 	(double)yaw, (double)ned_pitch, (double)ned_roll,
+			// 	(double)_selector.setpoint().pitch, (double)_selector.setpoint().roll);
 		}
 
 		_selector.setpoint().timestamp = now;
