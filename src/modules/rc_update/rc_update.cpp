@@ -350,7 +350,6 @@ void RCUpdate::Run()
 		return;
 	}
 
-	PX4_ERR("RC Update Run() called");
 	perf_begin(_loop_perf);
 	perf_count(_loop_interval_perf);
 
@@ -373,7 +372,6 @@ void RCUpdate::Run()
 	input_rc_s input_rc;
 
 	if (_input_rc_sub.update(&input_rc)) {
-		PX4_ERR("RC input received - channels: %d, signal_lost: %d", input_rc.channel_count, (int)input_rc.rc_lost);
 
 		// warn if the channel count is changing (possibly indication of error)
 		if (!input_rc.rc_lost) {
@@ -688,60 +686,38 @@ void RCUpdate::UpdateCachedYaw()
 		matrix::Eulerf euler = q;  // Convert quaternion to Euler angles
 		_cached_yaw = euler.psi();   // Get yaw angle
 		_yaw_valid = true;
-
-		PX4_WARN("Updated cached yaw: %.3f", (double)_cached_yaw);
 	}
 }
 
 void RCUpdate::UpdateManualControlInput(const hrt_abstime &timestamp_sample)
 {
-	manual_control_setpoint_s manual_control_input{};
-	manual_control_input.timestamp_sample = timestamp_sample;
-	manual_control_input.data_source = manual_control_setpoint_s::SOURCE_RC;
+    manual_control_setpoint_s manual_control_input{};
+    manual_control_input.timestamp_sample = timestamp_sample;
+    manual_control_input.data_source = manual_control_setpoint_s::SOURCE_RC;
 
-	// limit controls
-	float roll_ned = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
-	float pitch_ned = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
+    // limit controls
+    float roll_ned = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
+    float pitch_ned = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
 
-	PX4_WARN("RC Update: roll_ned=%.3f, pitch_ned=%.3f", (double)roll_ned, (double)pitch_ned);
+    // Remove NED to body frame transformation
+    manual_control_input.roll = roll_ned;
+    manual_control_input.pitch = pitch_ned;
 
-	// Use cached yaw angle for NED to body frame conversion
-	if (_yaw_valid) {
-		// Convert NED frame roll/pitch commands to body frame
-		// In NED: roll_ned = rotation around North axis, pitch_ned = rotation around East axis
-		// In Body: roll_body = rotation around Forward axis, pitch_body = rotation around Right axis
-		//
-		// The transformation accounts for vehicle yaw:
-		// roll_body = roll_ned * cos(yaw) + pitch_ned * sin(yaw)
-		// pitch_body = -roll_ned * sin(yaw) + pitch_ned * cos(yaw)
+    manual_control_input.yaw = get_rc_value(rc_channels_s::FUNCTION_YAW,     -1.f, 1.f);
+    manual_control_input.throttle = get_rc_value(rc_channels_s::FUNCTION_THROTTLE, -1.f, 1.f);
+    manual_control_input.flaps = get_rc_value(rc_channels_s::FUNCTION_FLAPS,   -1.f, 1.f);
+    manual_control_input.aux1  = get_rc_value(rc_channels_s::FUNCTION_AUX_1,   -1.f, 1.f);
+    manual_control_input.aux2  = get_rc_value(rc_channels_s::FUNCTION_AUX_2,   -1.f, 1.f);
+    manual_control_input.aux3  = get_rc_value(rc_channels_s::FUNCTION_AUX_3,   -1.f, 1.f);
+    manual_control_input.aux4  = get_rc_value(rc_channels_s::FUNCTION_AUX_4,   -1.f, 1.f);
+    manual_control_input.aux5  = get_rc_value(rc_channels_s::FUNCTION_AUX_5,   -1.f, 1.f);
+    manual_control_input.aux6  = get_rc_value(rc_channels_s::FUNCTION_AUX_6,   -1.f, 1.f);
+    manual_control_input.valid = _rc_calibrated;
 
-		float cos_yaw = cosf(_cached_yaw);
-		float sin_yaw = sinf(_cached_yaw);
-		PX4_ERR("Using cached yaw=%.3f, cos_yaw=%.3f, sin_yaw=%.3f", (double)_cached_yaw, (double)cos_yaw, (double)sin_yaw);
-		manual_control_input.roll = roll_ned * cos_yaw + pitch_ned * sin_yaw;
-		manual_control_input.pitch = -roll_ned * sin_yaw + pitch_ned * cos_yaw;
-	} else {
-		PX4_ERR("No valid cached yaw data, using fallback");
-		// Fallback if yaw is not valid
-		manual_control_input.roll = roll_ned;
-		manual_control_input.pitch = pitch_ned;
-	}
-
-	manual_control_input.yaw = get_rc_value(rc_channels_s::FUNCTION_YAW,     -1.f, 1.f);
-	manual_control_input.throttle = get_rc_value(rc_channels_s::FUNCTION_THROTTLE, -1.f, 1.f);
-	manual_control_input.flaps = get_rc_value(rc_channels_s::FUNCTION_FLAPS,   -1.f, 1.f);
-	manual_control_input.aux1  = get_rc_value(rc_channels_s::FUNCTION_AUX_1,   -1.f, 1.f);
-	manual_control_input.aux2  = get_rc_value(rc_channels_s::FUNCTION_AUX_2,   -1.f, 1.f);
-	manual_control_input.aux3  = get_rc_value(rc_channels_s::FUNCTION_AUX_3,   -1.f, 1.f);
-	manual_control_input.aux4  = get_rc_value(rc_channels_s::FUNCTION_AUX_4,   -1.f, 1.f);
-	manual_control_input.aux5  = get_rc_value(rc_channels_s::FUNCTION_AUX_5,   -1.f, 1.f);
-	manual_control_input.aux6  = get_rc_value(rc_channels_s::FUNCTION_AUX_6,   -1.f, 1.f);
-	manual_control_input.valid = _rc_calibrated;
-
-	// publish manual_control_input topic
-	manual_control_input.timestamp = hrt_absolute_time();
-	_manual_control_input_pub.publish(manual_control_input);
-	_last_manual_control_input_publish = manual_control_input.timestamp;
+    // publish manual_control_input topic
+    manual_control_input.timestamp = hrt_absolute_time();
+    _manual_control_input_pub.publish(manual_control_input);
+    _last_manual_control_input_publish = manual_control_input.timestamp;
 }
 
 int RCUpdate::task_spawn(int argc, char *argv[])
