@@ -43,6 +43,11 @@
         "files.watcherExclude": {
                 "**/build/**": true
         },
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+                "/opt/ros/humble/lib/python3.10/site-packages",
+                "/home/pyro/ws_offboard_control/install/px4_msgs/local/lib/python3.10/dist-packages"
+        ],
         "git.detectSubmodulesLimit": 20,
         "git.ignoreLimitWarning": true,
         "githubPullRequests.defaultMergeMethod": "squash",
