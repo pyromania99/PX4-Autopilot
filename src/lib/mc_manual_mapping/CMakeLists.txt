@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,18 +31,15 @@
 #
 ############################################################################
 
-px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
-	COMPILE_FLAGS
-		${MAX_CUSTOM_OPT_LEVEL}
-	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
-	DEPENDS
-		circuit_breaker
-		mathlib
-		McManualMapping
-		RateControl
-		px4_work_queue
-	)
+px4_add_library(McManualMapping
+	StickToAttitudeSetpoint.cpp
+	StickToAttitudeSetpoint.hpp
+	StickToRateSetpoint.cpp
+	StickToRateSetpoint.hpp
+)
+target_compile_options(McManualMapping PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
+target_include_directories(McManualMapping PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(McManualMapping PUBLIC StickYaw AttitudeControl)
+
+px4_add_functional_gtest(SRC StickToAttitudeSetpointTest.cpp LINKLIBS McManualMapping StickYaw AttitudeControl)
+px4_add_functional_gtest(SRC StickToRateSetpointTest.cpp LINKLIBS McManualMapping)

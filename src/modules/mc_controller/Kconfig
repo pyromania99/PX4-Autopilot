@@ -1,0 +1,21 @@
+menuconfig MODULES_MC_CONTROLLER
+	bool "mc_controller (pluggable multicopter controller framework)"
+	default n
+	select MODULES_MC_POS_CONTROL
+	select MODULES_MC_ATT_CONTROL
+	select MODULES_MC_RATE_CONTROL
+	---help---
+		Pluggable multicopter controller framework.
+
+		Selects the stock multicopter control modules because it reuses their
+		PositionControl / AttitudeControl / Takeoff / GotoControl libraries and
+		their MPC_*/MC_* parameter definitions (those libraries and parameters
+		only exist when the owning module is enabled), and because MC_CTRL_ALG=0
+		must remain available as the stock fallback.
+
+menuconfig USER_MC_CONTROLLER
+	bool "mc_controller running as userspace module"
+	default n
+	depends on BOARD_PROTECTED && MODULES_MC_CONTROLLER
+	---help---
+		Put mc_controller in userspace memory

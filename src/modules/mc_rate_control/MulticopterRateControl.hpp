@@ -34,6 +34,7 @@
 #pragma once
 
 #include <lib/rate_control/rate_control.hpp>
+#include <lib/mc_manual_mapping/StickToRateSetpoint.hpp>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/matrix/matrix/math.hpp>
 #include <lib/perf/perf_counter.h>
@@ -93,6 +94,7 @@ private:
 	void updateActuatorControlsStatus(const vehicle_torque_setpoint_s &vehicle_torque_setpoint, float dt);
 
 	RateControl _rate_control; ///< class for rate control calculations
+	StickToRateSetpoint _stick_to_rate{this}; ///< manual stick to body rate setpoint mapping (Acro)
 
 	uORB::Subscription _battery_status_sub{ORB_ID(battery_status)};
 	uORB::Subscription _control_allocator_status_sub{ORB_ID(control_allocator_status)};
@@ -123,7 +125,6 @@ private:
 	perf_counter_t	_loop_perf;			/**< loop duration performance counter */
 
 	// keep setpoint values between updates
-	matrix::Vector3f _acro_rate_max;		/**< max attitude rates in acro mode */
 	matrix::Vector3f _rates_setpoint{};
 
 	float _battery_status_scale{0.0f};
@@ -156,14 +157,6 @@ private:
 		(ParamFloat<px4::params::MC_YAWRATE_FF>) _param_mc_yawrate_ff,
 		(ParamFloat<px4::params::MC_YAWRATE_K>) _param_mc_yawrate_k,
 		(ParamFloat<px4::params::MC_YAW_TQ_CUTOFF>) _param_mc_yaw_tq_cutoff,
-
-		(ParamFloat<px4::params::MC_ACRO_R_MAX>) _param_mc_acro_r_max,
-		(ParamFloat<px4::params::MC_ACRO_P_MAX>) _param_mc_acro_p_max,
-		(ParamFloat<px4::params::MC_ACRO_Y_MAX>) _param_mc_acro_y_max,
-		(ParamFloat<px4::params::MC_ACRO_EXPO>) _param_mc_acro_expo,			/**< expo stick curve shape (roll & pitch) */
-		(ParamFloat<px4::params::MC_ACRO_EXPO_Y>) _param_mc_acro_expo_y,				/**< expo stick curve shape (yaw) */
-		(ParamFloat<px4::params::MC_ACRO_SUPEXPO>) _param_mc_acro_supexpo,		/**< superexpo stick curve shape (roll & pitch) */
-		(ParamFloat<px4::params::MC_ACRO_SUPEXPOY>) _param_mc_acro_supexpoy,		/**< superexpo stick curve shape (yaw) */
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en
 	)

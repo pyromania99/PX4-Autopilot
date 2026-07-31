@@ -1,0 +1,41 @@
+module_name: Multicopter Controller Framework
+
+parameters:
+  - group: Multicopter Controller Framework
+    definitions:
+      MC_CTRL_ALG:
+        description:
+          short: Multicopter control law
+          long: |
+            Selects which control law runs from the commanded setpoint down to
+            motor moments.
+
+            0 starts the stock chain (mc_pos_control + mc_att_control +
+            mc_rate_control) and does NOT start mc_controller. Any non-zero value
+            starts mc_controller in place of that chain.
+
+            Changing between 0 and non-zero requires a reboot because it changes
+            which modules the startup script launches. Changing between non-zero
+            values takes effect on the next disarm; the framework never allocates
+            a controller while armed.
+        type: enum
+        values:
+          0: Stock cascade (mc_pos/att/rate_control modules)
+          1: Reference cascaded PID (framework, equivalent to 0)
+          2: Template controller
+        default: 0
+        reboot_required: true
+        category: System
+
+      MC_CTRL_WD_MS:
+        description:
+          short: Controller output watchdog timeout
+          long: |
+            Latch the reference-cascade fallback if the selected controller
+            produces no valid output for this long while armed.
+        type: int32
+        default: 50
+        unit: ms
+        min: 5
+        max: 500
+        category: System

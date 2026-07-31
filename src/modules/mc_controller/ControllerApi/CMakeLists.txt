@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,18 +31,22 @@
 #
 ############################################################################
 
-px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
-	COMPILE_FLAGS
-		${MAX_CUSTOM_OPT_LEVEL}
-	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
-	DEPENDS
-		circuit_breaker
-		mathlib
-		McManualMapping
-		RateControl
-		px4_work_queue
-	)
+px4_add_library(MulticopterControllerApi
+	ControllerIO.cpp
+	ControllerIO.hpp
+	MulticopterControllerBase.hpp
+)
+target_compile_options(MulticopterControllerApi PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
+target_include_directories(MulticopterControllerApi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Unit rather than functional gtest: the interface types are header-only plus a
+# small .cpp, ModuleParams is header-only, and nothing here touches the parameter
+# system or uORB at runtime. Matches the other module-local tests (PositionControl,
+# AttitudeControl).
+#
+# The functional variant does not link for this target (undefined orb_publish /
+# uorb_start / init_app_map). Note that is NOT a module-subdirectory limitation -
+# VehicleState/ uses px4_add_functional_gtest from a sibling directory and links
+# fine because it genuinely pulls in the parameter system. Prefer the unit variant
+# wherever the code under test needs nothing from the runtime.
+px4_add_unit_gtest(SRC ControllerApiTest.cpp LINKLIBS MulticopterControllerApi)

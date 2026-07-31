@@ -41,7 +41,6 @@
 
 using namespace matrix;
 using namespace time_literals;
-using math::radians;
 
 ModuleBase::Descriptor MulticopterRateControl::desc{task_spawn, custom_command, print_usage};
 
@@ -93,10 +92,6 @@ MulticopterRateControl::parameters_updated()
 	_rate_control.setFeedForwardGain(
 		Vector3f(_param_mc_rollrate_ff.get(), _param_mc_pitchrate_ff.get(), _param_mc_yawrate_ff.get()));
 
-
-	// manual rate control acro mode rate limits
-	_acro_rate_max = Vector3f(radians(_param_mc_acro_r_max.get()), radians(_param_mc_acro_p_max.get()),
-				  radians(_param_mc_acro_y_max.get()));
 
 	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
 }
@@ -159,14 +154,7 @@ MulticopterRateControl::Run()
 
 			if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
 				// manual rates control - ACRO mode
-				const Vector3f man_rate_sp{
-					math::superexpo(manual_control_setpoint.roll, _param_mc_acro_expo.get(), _param_mc_acro_supexpo.get()),
-					math::superexpo(-manual_control_setpoint.pitch, _param_mc_acro_expo.get(), _param_mc_acro_supexpo.get()),
-					math::superexpo(manual_control_setpoint.yaw, _param_mc_acro_expo_y.get(), _param_mc_acro_supexpoy.get())};
-
-				_rates_setpoint = man_rate_sp.emult(_acro_rate_max);
-				_thrust_setpoint(2) = -(manual_control_setpoint.throttle + 1.f) * .5f;
-				_thrust_setpoint(0) = _thrust_setpoint(1) = 0.f;
+				_stick_to_rate.update(manual_control_setpoint, _rates_setpoint, _thrust_setpoint);
 
 				// publish rate setpoint
 				vehicle_rates_setpoint.roll = _rates_setpoint(0);

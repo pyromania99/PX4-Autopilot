@@ -11,26 +11,36 @@
 control_allocator start
 
 #
-# Start Multicopter Rate Controller.
+# Multicopter control chain.
 #
-mc_rate_control start
-
+# MC_CTRL_ALG selects between the stock cascade and the pluggable controller
+# framework. "param greater -s" is deliberate: -s makes a missing parameter fail
+# silently, so a build without MODULES_MC_CONTROLLER always takes the stock branch.
 #
-# Start Multicopter Attitude Controller.
-#
-mc_att_control start
+if param greater -s MC_CTRL_ALG 0
+then
+	#
+	# Pluggable controller framework replaces mc_rate_control, mc_att_control
+	# and mc_pos_control. flight_mode_manager still generates the setpoints.
+	#
+	mc_hover_thrust_estimator start
+	flight_mode_manager start
+	mc_controller start
+else
+	#
+	# Stock Multicopter Rate / Attitude / Position Controllers.
+	#
+	mc_rate_control start
+	mc_att_control start
+	mc_hover_thrust_estimator start
+	flight_mode_manager start
+	mc_pos_control start
+fi
 
 if param greater -s MC_AT_EN 0
 then
 	mc_autotune_attitude_control start
 fi
-
-#
-# Start Multicopter Position Controller.
-#
-mc_hover_thrust_estimator start
-flight_mode_manager start
-mc_pos_control start
 
 #
 # Start Multicopter Land Detector.

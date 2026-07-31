@@ -55,9 +55,7 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
-#include <lib/mathlib/math/filter/AlphaFilter.hpp>
-#include <lib/slew_rate/SlewRate.hpp>
-#include <lib/stick_yaw/StickYaw.hpp>
+#include <lib/mc_manual_mapping/StickToAttitudeSetpoint.hpp>
 
 #include <AttitudeControl.hpp>
 
@@ -91,15 +89,8 @@ private:
 	 */
 	void parameters_updated();
 
-	float throttle_curve(float throttle_stick_input);
-
-	/**
-	 * Generate & publish an attitude setpoint from stick inputs
-	 */
-	void generate_attitude_setpoint(const matrix::Quatf &q, float dt);
-
 	AttitudeControl _attitude_control; /**< class for attitude control calculations */
-	StickYaw _stick_yaw{this};
+	StickToAttitudeSetpoint _stick_to_attitude{this}; /**< manual stick to attitude setpoint mapping */
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
@@ -124,17 +115,7 @@ private:
 
 	matrix::Vector3f _thrust_setpoint_body; /**< body frame 3D thrust vector */
 
-	float _hover_thrust_estimate{NAN};
-	SlewRate<float> _hover_thrust_slew_rate{.5f};
-
-	float _yaw_setpoint_stabilized{0.f};
 	float _unaided_heading{NAN}; // initialized NAN to not distract heading lock when local position never published
-	float _man_tilt_max{0.f};			/**< maximum tilt allowed for manual flight [rad] */
-
-	SlewRate<float> _manual_throttle_minimum{0.f}; ///< 0 when landed and ramped to MPC_MANTHR_MIN in air
-	SlewRate<float> _manual_throttle_maximum{0.f}; ///< 0 when disarmed ramped to 1 when spooled up
-	AlphaFilter<float> _man_roll_input_filter;
-	AlphaFilter<float> _man_pitch_input_filter;
 
 	hrt_abstime _last_run{0};
 	hrt_abstime _last_attitude_setpoint{0};
@@ -149,9 +130,6 @@ private:
 	uint8_t _quat_reset_counter{0};
 
 	DEFINE_PARAMETERS(
-		(ParamInt<px4::params::MC_AIRMODE>)         _param_mc_airmode,
-		(ParamFloat<px4::params::MC_MAN_TILT_TAU>)  _param_mc_man_tilt_tau,
-
 		(ParamFloat<px4::params::MC_ROLL_P>)        _param_mc_roll_p,
 		(ParamFloat<px4::params::MC_PITCH_P>)       _param_mc_pitch_p,
 		(ParamFloat<px4::params::MC_YAW_P>)         _param_mc_yaw_p,
@@ -160,14 +138,6 @@ private:
 		(ParamFloat<px4::params::MC_ROLLRATE_MAX>)  _param_mc_rollrate_max,
 		(ParamFloat<px4::params::MC_PITCHRATE_MAX>) _param_mc_pitchrate_max,
 		(ParamFloat<px4::params::MC_YAWRATE_MAX>)   _param_mc_yawrate_max,
-
-		/* Stabilized mode params */
-		(ParamFloat<px4::params::MAN_DEADZONE>) _param_man_deadzone,
-		(ParamFloat<px4::params::MPC_MAN_TILT_MAX>) _param_mpc_man_tilt_max,
-		(ParamFloat<px4::params::MPC_MANTHR_MIN>) _param_mpc_manthr_min,
-		(ParamFloat<px4::params::MPC_THR_MAX>) _param_mpc_thr_max,
-		(ParamFloat<px4::params::MPC_THR_HOVER>) _param_mpc_thr_hover,
-		(ParamInt<px4::params::MPC_THR_CURVE>) _param_mpc_thr_curve,
 
 		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time
 	)

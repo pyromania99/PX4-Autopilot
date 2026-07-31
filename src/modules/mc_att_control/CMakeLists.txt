@@ -44,6 +44,6 @@ px4_add_module(
 	DEPENDS
 		AttitudeControl
 		mathlib
+		McManualMapping
 		px4_work_queue
-		StickYaw
 	)

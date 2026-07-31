@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,18 +31,23 @@
 #
 ############################################################################
 
-px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
-	COMPILE_FLAGS
-		${MAX_CUSTOM_OPT_LEVEL}
-	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
-	DEPENDS
-		circuit_breaker
-		mathlib
-		McManualMapping
-		RateControl
-		px4_work_queue
-	)
+
+px4_add_library(McControllerCommandFrontEnd
+	ControlLevelResolver.cpp
+	ControlLevelResolver.hpp
+	CommandFrontEnd.cpp
+	CommandFrontEnd.hpp
+)
+target_compile_options(McControllerCommandFrontEnd PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
+target_include_directories(McControllerCommandFrontEnd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(McControllerCommandFrontEnd PUBLIC MulticopterControllerApi McManualMapping Takeoff SlewRate)
+
+# Links commander's own mode_util so the level truth table cannot drift from
+# commander. Unit gtest: nothing here needs the parameter system or uORB runtime.
+px4_add_unit_gtest(SRC ControlLevelResolverTest.cpp
+	LINKLIBS McControllerCommandFrontEnd MulticopterControllerApi mode_util
+	INCLUDES ${PX4_SOURCE_DIR}/src/modules/commander)
+
+# Functional gtest: CommandFrontEnd uses DEFINE_PARAMETERS.
+px4_add_functional_gtest(SRC CommandFrontEndTest.cpp
+	LINKLIBS McControllerCommandFrontEnd MulticopterControllerApi McManualMapping Takeoff)

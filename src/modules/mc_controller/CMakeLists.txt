@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,18 +31,35 @@
 #
 ############################################################################
 
+# Pluggable multicopter controller framework.
+
+add_subdirectory(ControllerApi)
+add_subdirectory(VehicleState)
+add_subdirectory(CommandFrontEnd)
+add_subdirectory(controllers)
+
 px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
+	MODULE modules__mc_controller
+	MAIN mc_controller
 	COMPILE_FLAGS
 		${MAX_CUSTOM_OPT_LEVEL}
 	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
+		MulticopterController.cpp
+		MulticopterController.hpp
+		OuterLoop.cpp
+		OuterLoop.hpp
+	MODULE_CONFIG
+		module.yaml
+	# PositionControl / AttitudeControl / RateControl / Takeoff / SlewRate are NOT
+	# listed here: px4_add_module() calls get_target_property() at configure time,
+	# and this directory is processed before mc_pos_control defines those targets.
+	# They arrive transitively through the PUBLIC linkage of the libraries below.
 	DEPENDS
-		circuit_breaker
-		mathlib
+		MulticopterControllerApi
+		MulticopterControllers
+		McControllerCommandFrontEnd
+		McControllerVehicleState
 		McManualMapping
-		RateControl
+		mathlib
 		px4_work_queue
 	)

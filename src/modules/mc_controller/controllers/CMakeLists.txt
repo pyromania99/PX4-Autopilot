@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,18 +31,25 @@
 #
 ############################################################################
 
-px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
-	COMPILE_FLAGS
-		${MAX_CUSTOM_OPT_LEVEL}
-	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
-	DEPENDS
-		circuit_breaker
-		mathlib
-		McManualMapping
-		RateControl
-		px4_work_queue
-	)
+
+px4_add_library(MulticopterControllers
+	CascadedPidController.cpp
+	CascadedPidController.hpp
+	ControllerRegistry.cpp
+	ControllerRegistry.hpp
+	TemplateController.cpp
+	TemplateController.hpp
+)
+target_compile_options(MulticopterControllers PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
+target_include_directories(MulticopterControllers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(MulticopterControllers PUBLIC
+	MulticopterControllerApi
+	PositionControl
+	AttitudeControl
+	RateControl
+)
+
+# Functional gtest: the controller and the hand-wired stock triple both read
+# MPC_*/MC_* parameters, so the live parameter system is required.
+px4_add_functional_gtest(SRC CascadedPidControllerTest.cpp
+	LINKLIBS MulticopterControllers MulticopterControllerApi PositionControl AttitudeControl RateControl)
