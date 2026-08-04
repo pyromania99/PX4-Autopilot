@@ -30,7 +30,7 @@ sed -i 's/TemplateController/MyController/g; s/"template"/"mine"/' MyController.
 |---|---|
 | `controllers/ControllerRegistry.hpp` | add `MyLaw = 4` to `enum class Algorithm` |
 | `controllers/ControllerRegistry.cpp` | add `case Algorithm::MyLaw: return new MyController(parent);` |
-| `controllers/CMakeLists.txt` | add `MyController.cpp` and `my_controller_params.c` to `SRCS` |
+| `controllers/CMakeLists.txt` | add `MyController.cpp` to `SRCS` (**not** `my_controller_params.c` — `src/lib/parameters` globs `src/*params.c` and generates it) |
 | `module.yaml` | add `4: My law` under the `MC_CTRL_ALG` enum |
 
 `-Wswitch` will fail the build if you add the enumerator and forget the case.

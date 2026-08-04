@@ -32,167 +32,134 @@
  ****************************************************************************/
 
 /**
- * @file CascadedPidController.hpp
- * @brief The stock PX4 cascade, expressed on the pluggable controller interface.
+ * @file CascadedPdController.hpp
+ * @brief Cascaded PD with a geometric (SO(3)) attitude law. MC_CTRL_ALG=1.
  *
- * This is the reference implementation and the A/B baseline: it wraps the very
- * same PositionControl, AttitudeControl and RateControl objects the stock modules
- * use, and reuses their MPC_ and MC_ parameters. MC_CTRL_ALG=1 should therefore be
- * behaviourally indistinguishable from MC_CTRL_ALG=0.
+ * Three stages, no integrators anywhere:
  *
- * Stage-rate parity matters: the three stock stages run at different rates on two
- * work queues. Each stage here is gated on state.freshness and fed its own dt, or
- * the reference would drift from stock in a way that looks like a controller bug.
+ *   1. outer   position/velocity PD              -> desired translational acceleration
+ *   2. middle  desired acceleration              -> desired attitude R_des + collective
+ *   3. inner   e_R = 1/2 vee(R_des' R - R' R_des) -> body torque
+ *
+ * YAW IS NOT CONTROLLED. R_des takes its heading from the vehicle's *current*
+ * heading every cycle, and the yaw axis gets rate damping only (MC_PD_YAWR_D,
+ * default 0). That is deliberate, not an omission: a multirotor that has lost a
+ * rotor cannot hold heading, and surrendering yaw is what leaves enough control
+ * authority to hold position. The cost is that RC yaw stick and mission yaw
+ * setpoints do nothing.
+ *
+ * This is NOT the stock cascade and makes no claim of equivalence to
+ * MC_CTRL_ALG=0. It shares no code with PositionControl / AttitudeControl /
+ * RateControl and none of their MPC_ / MC_ gains - only the framework-level
+ * limits CommandFrontEnd already computes (tilt, thrust, velocity) and the hover
+ * thrust estimate.
+ *
+ * Beware that this class is also the framework's always-allocated failsafe
+ * (MulticopterController::_reference): every input is NaN-guarded and every
+ * output clamped, because there is nothing behind it to catch a bad cycle.
  */
 
 #pragma once
 
-#include <AttitudeControl.hpp>
 #include <MulticopterControllerBase.hpp>
-#include <PositionControl.hpp>
-#include <lib/mathlib/math/filter/AlphaFilter.hpp>
-#include <lib/rate_control/rate_control.hpp>
-#include <px4_platform_common/atomic.h>
 
 #include <uORB/topics/rate_ctrl_status.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 
-class CascadedPidController : public MulticopterControllerBase
+class CascadedPdController : public MulticopterControllerBase
 {
 public:
-	explicit CascadedPidController(ModuleParams *parent);
-	~CascadedPidController() override = default;
+	explicit CascadedPdController(ModuleParams *parent);
+	~CascadedPdController() override = default;
 
-	const char *name() const override { return "cascaded_pid"; }
+	const char *name() const override { return "cascaded_pd"; }
 	uint8_t supportedLevels() const override { return mc_ctrl::kAllLevels; }
 
 	void reset() override;
-	void resetOuter() override;
-	void updateOuterParams() override { applyOuterParams(); }
 
 	bool update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 		    float dt, mc_ctrl::ControllerOutput &output) override;
 
-	void setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &feedback) override;
-
 	/**
-	 * The cascade decomposes cleanly, so it takes stock's work-queue separation:
-	 * the position stage runs on nav_and_controllers at position rate and hands the
-	 * attitude setpoint down over uORB.
-	 *
-	 * Cross-thread state is disjoint by construction: _position_control is reached
-	 * only from stepTrajectoryToAttitude() and resetOuter(); update() and reset()
-	 * touch only _attitude_control, _rate_control and _output_lpf_yaw. Parameter
-	 * writes go the same way - updateParams() only raises _outer_params_dirty and
-	 * applyOuterParams() does the actual push. Everything crossing between the
-	 * stages travels through the published vehicle_attitude_setpoint.
+	 * Single work queue. hasOuterStage() exists for trajectory stages too heavy for
+	 * the gyro-rate queue; this one is a few dozen flops, so paying for the
+	 * cross-queue state-partitioning contract buys nothing. The position stage still
+	 * runs at position rate because update() gates it on state.freshness.position_new
+	 * and feeds it state.freshness.dt_position.
 	 */
-	bool hasOuterStage() const override { return true; }
-
-	bool updateOuter(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
-			 float dt, vehicle_attitude_setpoint_s &attitude_setpoint) override;
-
-	/// Additive rate setpoint from mc_autotune_attitude_control, applied at the
-	/// attitude stage exactly as mc_att_control does (mc_att_control_main.cpp:346-357).
-	void setAutotuneRateSetpoint(const matrix::Vector3f &rate_sp) { _autotune_rate_sp = rate_sp; }
-	void clearAutotuneRateSetpoint() { _autotune_rate_sp.setZero(); }
-
-	/// For the module's rate_ctrl_status publication.
-	void getRateControlStatus(rate_ctrl_status_s &status) { _rate_control.getRateControlStatus(status); }
-
-	/// For the module's vehicle_local_position_setpoint publication.
-	void getLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const
-	{
-		_position_control.getLocalPositionSetpoint(sp);
-	}
+	bool hasOuterStage() const override { return false; }
 
 	void fillLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const override
 	{
-		_position_control.getLocalPositionSetpoint(sp);
+		getLocalPositionSetpoint(sp);
 	}
 
-	/// Exposed so the framework can later run partial stacks for controllers that
-	/// only implement an inner loop (deferred Stage 2 work in the plan).
-	bool stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
-				      float dt_pos, vehicle_attitude_setpoint_s &attitude_setpoint);
-	matrix::Vector3f stepAttitudeToRates(const matrix::Quatf &q, const matrix::Quatf &q_sp, float yaw_sp_move_rate);
+	void fillStatus(mc_controller_status_s &status) const override;
+
+	/// Additive rate setpoint from mc_autotune_attitude_control, applied to the
+	/// implied rate setpoint the attitude stage produces (see update()).
+	void setAutotuneRateSetpoint(const matrix::Vector3f &rate_sp) { _autotune_rate_sp = rate_sp; }
+	void clearAutotuneRateSetpoint() { _autotune_rate_sp.setZero(); }
+
+	/// For the module's rate_ctrl_status publication. A PD law has no integrators, so
+	/// this reports zeros rather than leaving the topic unpublished - mc_autotune and
+	/// the log consumers expect it to keep arriving.
+	void getRateControlStatus(rate_ctrl_status_s &status) const
+	{
+		status.rollspeed_integ = 0.f;
+		status.pitchspeed_integ = 0.f;
+		status.yawspeed_integ = 0.f;
+	}
+
+	/// For the module's vehicle_local_position_setpoint publication.
+	void getLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const;
 
 protected:
 	void updateParams() override;
 
-
 private:
-	void runRateStage(const mc_ctrl::ControllerState &state, float dt, mc_ctrl::ControllerOutput &output);
+	/// Stages 1+2: position/velocity PD -> desired acceleration -> R_des + collective.
+	/// Writes _attitude_setpoint and _thrust_setpoint.
+	void stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
 
-	/// Push cached position-stage parameters into _position_control if they changed.
-	/// Only ever called from the queue that runs the position stage.
-	void applyOuterParams();
+	/// Stage 2, shared by the Trajectory and Attitude levels: a desired body-z
+	/// direction plus the *current* heading becomes R_des.
+	void bodyzToAttitudeSetpoint(matrix::Vector3f body_z, const mc_ctrl::ControllerState &state,
+				     const mc_ctrl::ControllerCommand &command);
 
-	PositionControl _position_control;
-	AttitudeControl _attitude_control;
-	RateControl _rate_control;
+	/// Stage 3: attitude error -> implied rate setpoint. The yaw axis is always zero.
+	matrix::Vector3f attitudeToRateSetpoint(const matrix::Quatf &q);
 
-	AlphaFilter<float> _output_lpf_yaw;	///< MC_YAW_TQ_CUTOFF, applied to yaw torque
-
-	// Cached between stages, since the stages run at different rates.
-	matrix::Vector3f _rate_setpoint{};
-	matrix::Vector3f _thrust_setpoint{};
+	// Cached across cycles: the trajectory stage runs at position rate, the rest at
+	// gyro rate.
 	matrix::Quatf _attitude_setpoint{};
+	matrix::Vector3f _thrust_setpoint{};
+	matrix::Vector3f _rate_setpoint{};
 	matrix::Vector3f _autotune_rate_sp{};
 
-	/// Yaw feed-forward produced by the position stage
-	/// (PositionControl.cpp:272 sets attitude_setpoint.yaw_sp_move_rate = _yawspeed_sp).
-	/// Stock forwards this to AttitudeControl via the published attitude setpoint;
-	/// dropping it loses trajectory yaw feed-forward entirely.
-	float _yaw_sp_move_rate{0.f};
+	/// Telemetry only, for vehicle_local_position_setpoint.
+	matrix::Vector3f _position_setpoint{NAN, NAN, NAN};
+	matrix::Vector3f _velocity_setpoint{NAN, NAN, NAN};
+	matrix::Vector3f _acceleration_setpoint{NAN, NAN, NAN};
+
+	/// Last attitude error, for mc_controller_status.debug[].
+	matrix::Vector3f _attitude_error{};
 
 	bool _position_stage_valid{false};
 
-	/// Raised by updateParams() on the rate_ctrl queue, consumed by applyOuterParams()
-	/// on the queue that owns _position_control.
-	px4::atomic_bool _outer_params_dirty{true};
+	// Cached gains, so update() never touches the parameter system.
+	matrix::Vector3f _pos_p{};	///< [1/s^2] (MC_PD_XY_P, MC_PD_XY_P, MC_PD_Z_P)
+	matrix::Vector3f _pos_d{};	///< [1/s]   (MC_PD_XY_D, MC_PD_XY_D, MC_PD_Z_D)
+	matrix::Vector3f _att_d{};	///< [s/rad] (MC_PD_ATT_D, MC_PD_ATT_D, MC_PD_YAWR_D)
+	float _att_p{0.f};		///< [1/rad] MC_PD_ATT_P, roll/pitch only
 
 	DEFINE_PARAMETERS(
-		// position stage
-		(ParamFloat<px4::params::MPC_XY_P>)          _param_mpc_xy_p,
-		(ParamFloat<px4::params::MPC_Z_P>)           _param_mpc_z_p,
-		(ParamFloat<px4::params::MPC_XY_VEL_P_ACC>)  _param_mpc_xy_vel_p_acc,
-		(ParamFloat<px4::params::MPC_XY_VEL_I_ACC>)  _param_mpc_xy_vel_i_acc,
-		(ParamFloat<px4::params::MPC_XY_VEL_D_ACC>)  _param_mpc_xy_vel_d_acc,
-		(ParamFloat<px4::params::MPC_Z_VEL_P_ACC>)   _param_mpc_z_vel_p_acc,
-		(ParamFloat<px4::params::MPC_Z_VEL_I_ACC>)   _param_mpc_z_vel_i_acc,
-		(ParamFloat<px4::params::MPC_Z_VEL_D_ACC>)   _param_mpc_z_vel_d_acc,
-		(ParamFloat<px4::params::MPC_THR_XY_MARG>)   _param_mpc_thr_xy_marg,
-		(ParamBool<px4::params::MPC_ACC_DECOUPLE>)   _param_mpc_acc_decouple,
-
-		// attitude stage
-		(ParamFloat<px4::params::MC_ROLL_P>)         _param_mc_roll_p,
-		(ParamFloat<px4::params::MC_PITCH_P>)        _param_mc_pitch_p,
-		(ParamFloat<px4::params::MC_YAW_P>)          _param_mc_yaw_p,
-		(ParamFloat<px4::params::MC_YAW_WEIGHT>)     _param_mc_yaw_weight,
-		(ParamFloat<px4::params::MC_ROLLRATE_MAX>)   _param_mc_rollrate_max,
-		(ParamFloat<px4::params::MC_PITCHRATE_MAX>)  _param_mc_pitchrate_max,
-		(ParamFloat<px4::params::MC_YAWRATE_MAX>)    _param_mc_yawrate_max,
-
-		// rate stage
-		(ParamFloat<px4::params::MC_ROLLRATE_P>)     _param_mc_rollrate_p,
-		(ParamFloat<px4::params::MC_ROLLRATE_I>)     _param_mc_rollrate_i,
-		(ParamFloat<px4::params::MC_RR_INT_LIM>)     _param_mc_rr_int_lim,
-		(ParamFloat<px4::params::MC_ROLLRATE_D>)     _param_mc_rollrate_d,
-		(ParamFloat<px4::params::MC_ROLLRATE_FF>)    _param_mc_rollrate_ff,
-		(ParamFloat<px4::params::MC_ROLLRATE_K>)     _param_mc_rollrate_k,
-		(ParamFloat<px4::params::MC_PITCHRATE_P>)    _param_mc_pitchrate_p,
-		(ParamFloat<px4::params::MC_PITCHRATE_I>)    _param_mc_pitchrate_i,
-		(ParamFloat<px4::params::MC_PR_INT_LIM>)     _param_mc_pr_int_lim,
-		(ParamFloat<px4::params::MC_PITCHRATE_D>)    _param_mc_pitchrate_d,
-		(ParamFloat<px4::params::MC_PITCHRATE_FF>)   _param_mc_pitchrate_ff,
-		(ParamFloat<px4::params::MC_PITCHRATE_K>)    _param_mc_pitchrate_k,
-		(ParamFloat<px4::params::MC_YAWRATE_P>)      _param_mc_yawrate_p,
-		(ParamFloat<px4::params::MC_YAWRATE_I>)      _param_mc_yawrate_i,
-		(ParamFloat<px4::params::MC_YR_INT_LIM>)     _param_mc_yr_int_lim,
-		(ParamFloat<px4::params::MC_YAWRATE_D>)      _param_mc_yawrate_d,
-		(ParamFloat<px4::params::MC_YAWRATE_FF>)     _param_mc_yawrate_ff,
-		(ParamFloat<px4::params::MC_YAWRATE_K>)      _param_mc_yawrate_k,
-		(ParamFloat<px4::params::MC_YAW_TQ_CUTOFF>)  _param_mc_yaw_tq_cutoff
+		(ParamFloat<px4::params::MC_PD_XY_P>)    _param_mc_pd_xy_p,
+		(ParamFloat<px4::params::MC_PD_XY_D>)    _param_mc_pd_xy_d,
+		(ParamFloat<px4::params::MC_PD_Z_P>)     _param_mc_pd_z_p,
+		(ParamFloat<px4::params::MC_PD_Z_D>)     _param_mc_pd_z_d,
+		(ParamFloat<px4::params::MC_PD_ATT_P>)   _param_mc_pd_att_p,
+		(ParamFloat<px4::params::MC_PD_ATT_D>)   _param_mc_pd_att_d,
+		(ParamFloat<px4::params::MC_PD_YAWR_D>)  _param_mc_pd_yawr_d
 	)
 };

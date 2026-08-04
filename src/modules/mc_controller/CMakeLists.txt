@@ -50,10 +50,10 @@ px4_add_module(
 		OuterLoop.hpp
 	MODULE_CONFIG
 		module.yaml
-	# PositionControl / AttitudeControl / RateControl / Takeoff / SlewRate are NOT
-	# listed here: px4_add_module() calls get_target_property() at configure time,
-	# and this directory is processed before mc_pos_control defines those targets.
-	# They arrive transitively through the PUBLIC linkage of the libraries below.
+	# Takeoff / SlewRate are NOT listed here: px4_add_module() calls
+	# get_target_property() at configure time, and this directory is processed before
+	# mc_pos_control defines those targets. They arrive transitively through the PUBLIC
+	# linkage of McControllerCommandFrontEnd below.
 	DEPENDS
 		MulticopterControllerApi
 		MulticopterControllers

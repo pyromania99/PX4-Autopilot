@@ -99,7 +99,7 @@ flowchart LR
         API["ControllerApi<br/>ControllerIO · MulticopterControllerBase"]
         VS["VehicleState<br/>VehicleStateProvider"]
         CFE["CommandFrontEnd<br/>ControlLevelResolver · CommandFrontEnd"]
-        CTL["controllers/<br/>CascadedPid · Template · Registry"]
+        CTL["controllers/<br/>CascadedPd · Template · Registry"]
         MODU["MulticopterController<br/>module + output stage"]
         YML["module.yaml<br/>MC_CTRL_ALG · EXT_ALC · WD_MS"]
     end
@@ -170,8 +170,10 @@ flowchart LR
 ## 3. One control cycle, 250 times a second
 
 The gyro callback drives everything. Note where the two fallback triggers sit: an
-invalid output re-runs the reference cascade **in the same cycle**, so the vehicle
-is never left without a command.
+invalid output re-runs the fallback controller **in the same cycle**, so the vehicle
+is never left without a command. Since `MC_CTRL_ALG=1` became an independent
+cascaded PD law, that fallback *is* the PD law rather than anything stock-derived —
+reaching the stock cascade requires `MC_CTRL_ALG=0` and a reboot.
 
 ```mermaid
 flowchart TB
@@ -305,4 +307,4 @@ Final state: **161/161 tests pass**, both builds clean, `MC_CTRL_ALG` defaults t
 | Acro / BodyRate in flight | Deliberately skipped — scripted acro has high crash risk and the mapping is already proven bit-exact | Fly it manually |
 | Armed `actuator_motors` rate | The 10 Hz measured was the logger's downsample, not the publication rate | `uorb top` while armed |
 | Inner-loop cycle time | **Not measurable in SITL** — every `PC_ELAPSED` counter reports `0us elapsed`, for the stock modules too | Hardware only: `perf` → `mc_controller: cycle` against the 2.5 ms budget at `IMU_GYRO_RATEMAX=400` |
-| Outer-stage concurrency | The disjoint-state contract between `updateOuter()` and `update()` is enforced by review, not by the compiler | Only `CascadedPidController` opts in today; audit any new controller that does |
+| Outer-stage concurrency | The disjoint-state contract between `updateOuter()` and `update()` is enforced by review, not by the compiler | No shipped controller opts in today; audit any new controller that does |

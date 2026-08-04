@@ -48,7 +48,7 @@
 
 #pragma once
 
-#include <CascadedPidController.hpp>
+#include <CascadedPdController.hpp>
 #include <CommandFrontEnd.hpp>
 #include <ControllerRegistry.hpp>
 #include <MulticopterControllerBase.hpp>
@@ -126,8 +126,16 @@ private:
 	VehicleStateProvider _state_provider{this};
 	CommandFrontEnd _front_end{this};
 
-	/// Always allocated so the fallback is instantaneous and allocation-free.
-	CascadedPidController *_reference{nullptr};
+	/**
+	 * Always allocated so the fallback is instantaneous and allocation-free.
+	 *
+	 * Note this is NOT a route back to the stock cascade - CascadedPdController is an
+	 * independent control law, and reaching stock needs MC_CTRL_ALG=0 plus a reboot
+	 * because that decides which modules the startup script launches. So a fallback
+	 * latch buys a known-simple law with no integrators and no filters to diverge, not
+	 * a return to the flight-proven one.
+	 */
+	CascadedPdController *_reference{nullptr};
 	MulticopterControllerBase *_controller{nullptr};
 
 	/**

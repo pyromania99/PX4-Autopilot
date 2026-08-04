@@ -16,21 +16,45 @@ param set-default SIM_GZ_EN 1
 param set-default CA_AIRFRAME 0
 param set-default CA_ROTOR_COUNT 4
 
+# KM = 0 on every rotor: yaw is NOT ACTUATABLE on this airframe.
+#
+# models/x500/model.sdf has been modified so all four rotors turn ccw, so their
+# reaction torques add instead of cancelling and no differential yaw moment
+# exists. The vehicle is meant to spin - that is the point, it is the test plant
+# for a controller that surrenders yaw (see MC_PD_YAWR_D).
+#
+# Three models were flown before settling on 0. Measured, not reasoned:
+#
+#   KM = +-0.05 (stock)  allocator believes yaw is controllable, spends authority
+#                        chasing a yaw setpoint it can never reach
+#   KM = +0.05 (all)     WORSE. Sign-truthful, but it makes the yaw row of the
+#                        effectiveness matrix proportional to the thrust row, so
+#                        "zero yaw torque" and "collective thrust" become the same
+#                        knob. Stock could not take off at all - it sat at 0.07 m
+#                        for a whole flight fighting its own thrust.
+#   KM = 0 (all)         Yaw column is zero, so the allocator cleanly solves for
+#                        roll/pitch/thrust and simply cannot command yaw. The real
+#                        net yaw torque becomes an unmodelled disturbance, which is
+#                        exactly what it physically is. Takes off and flies.
+#
+# Note KM=0 does not stop the roll/pitch divergence above ~8 rad/s of spin; that
+# is a separate problem and is NOT an allocation issue.
+
 param set-default CA_ROTOR0_PX 0.13
 param set-default CA_ROTOR0_PY 0.22
-param set-default CA_ROTOR0_KM  0.05
+param set-default CA_ROTOR0_KM 0.0
 
 param set-default CA_ROTOR1_PX -0.13
 param set-default CA_ROTOR1_PY -0.20
-param set-default CA_ROTOR1_KM  0.05
+param set-default CA_ROTOR1_KM 0.0
 
 param set-default CA_ROTOR2_PX 0.13
 param set-default CA_ROTOR2_PY -0.22
-param set-default CA_ROTOR2_KM -0.05
+param set-default CA_ROTOR2_KM 0.0
 
 param set-default CA_ROTOR3_PX -0.13
 param set-default CA_ROTOR3_PY 0.20
-param set-default CA_ROTOR3_KM -0.05
+param set-default CA_ROTOR3_KM 0.0
 
 param set-default SIM_GZ_EC_FUNC1 101
 param set-default SIM_GZ_EC_FUNC2 102

@@ -14,6 +14,10 @@ parameters:
             mc_rate_control) and does NOT start mc_controller. Any non-zero value
             starts mc_controller in place of that chain.
 
+            The laws mc_controller offers are independent implementations, not
+            re-wrappings of the stock one. 1 in particular does not control yaw at
+            all; see MC_PD_YAWR_D.
+
             Changing between 0 and non-zero requires a reboot because it changes
             which modules the startup script launches. Changing between non-zero
             values takes effect on the next disarm; the framework never allocates
@@ -21,7 +25,7 @@ parameters:
         type: enum
         values:
           0: Stock cascade (mc_pos/att/rate_control modules)
-          1: Reference cascaded PID (framework, equivalent to 0)
+          1: Cascaded PD (geometric attitude, no yaw control)
           2: Template controller
         default: 0
         reboot_required: true
@@ -31,8 +35,10 @@ parameters:
         description:
           short: Controller output watchdog timeout
           long: |
-            Latch the reference-cascade fallback if the selected controller
-            produces no valid output for this long while armed.
+            Latch the fallback controller if the selected controller produces no
+            valid output for this long while armed. The fallback is the cascaded PD
+            law (MC_CTRL_ALG=1), which is always allocated; it is not the stock
+            cascade, since reaching that requires a reboot.
         type: int32
         default: 50
         unit: ms

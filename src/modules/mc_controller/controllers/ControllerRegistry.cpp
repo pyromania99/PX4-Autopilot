@@ -39,10 +39,10 @@
 namespace mc_ctrl
 {
 
-MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, CascadedPidController *reference)
+MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, CascadedPdController *reference)
 {
 	switch (static_cast<Algorithm>(alg)) {
-	case Algorithm::CascadedPid:
+	case Algorithm::CascadedPd:
 		// The reference is always allocated so fallback is allocation-free; reuse it
 		// rather than constructing a second identical controller.
 		return reference;
@@ -53,9 +53,11 @@ MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, C
 	case Algorithm::Stock:
 
 	// mc_controller is not started when MC_CTRL_ALG=0, so reaching here means the
-	// parameter changed after boot. Fall back rather than run nothing.
+	// parameter changed after boot. Fall back rather than run nothing. Note this does
+	// NOT get you the stock cascade: reaching stock needs MC_CTRL_ALG=0 and a reboot,
+	// because that is a decision about which modules the startup script launches.
 	default:
-		PX4_ERR("MC_CTRL_ALG=%d not available, using reference cascade", (int)alg);
+		PX4_ERR("MC_CTRL_ALG=%d not available, using %s", (int)alg, reference->name());
 		return reference;
 	}
 }
@@ -65,7 +67,7 @@ const char *algorithmName(int32_t alg)
 	switch (static_cast<Algorithm>(alg)) {
 	case Algorithm::Stock: return "stock";
 
-	case Algorithm::CascadedPid: return "cascaded_pid";
+	case Algorithm::CascadedPd: return "cascaded_pd";
 
 	case Algorithm::Template: return "template";
 

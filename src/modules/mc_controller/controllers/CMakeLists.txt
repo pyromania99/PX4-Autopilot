@@ -33,8 +33,8 @@
 
 
 px4_add_library(MulticopterControllers
-	CascadedPidController.cpp
-	CascadedPidController.hpp
+	CascadedPdController.cpp
+	CascadedPdController.hpp
 	ControllerRegistry.cpp
 	ControllerRegistry.hpp
 	TemplateController.cpp
@@ -42,14 +42,16 @@ px4_add_library(MulticopterControllers
 )
 target_compile_options(MulticopterControllers PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
 target_include_directories(MulticopterControllers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Deliberately NOT linking PositionControl / AttitudeControl / RateControl. The
+# controllers here implement their own control laws end to end; the stock cascade
+# remains reachable only as MC_CTRL_ALG=0, which runs the stock modules themselves.
+# Keeping the link out is what stops the two from quietly growing back together.
 target_link_libraries(MulticopterControllers PUBLIC
 	MulticopterControllerApi
-	PositionControl
-	AttitudeControl
-	RateControl
 )
 
-# Functional gtest: the controller and the hand-wired stock triple both read
-# MPC_*/MC_* parameters, so the live parameter system is required.
-px4_add_functional_gtest(SRC CascadedPidControllerTest.cpp
-	LINKLIBS MulticopterControllers MulticopterControllerApi PositionControl AttitudeControl RateControl)
+# Functional gtest: CascadedPdController uses DEFINE_PARAMETERS, so the live parameter
+# system is required.
+px4_add_functional_gtest(SRC CascadedPdControllerTest.cpp
+	LINKLIBS MulticopterControllers MulticopterControllerApi)

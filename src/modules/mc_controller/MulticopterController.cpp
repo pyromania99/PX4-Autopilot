@@ -48,7 +48,7 @@ MulticopterController::MulticopterController() :
 	_loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")),
 	_position_stage_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": position stage"))
 {
-	_reference = new CascadedPidController(this);
+	_reference = new CascadedPdController(this);
 	_controller = _reference;
 	_rate_ctrl_status_pub.advertise();
 }

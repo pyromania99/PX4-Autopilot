@@ -453,8 +453,19 @@ purely by name. Leaving them in place made the change smaller and let
 | value | controller |
 |---|---|
 | 0 | **default** — stock chain; `mc_controller` is not started at all |
-| 1 | `CascadedPidController` — the stock cascade on this interface; the A/B baseline |
+| 1 | `CascadedPdController` — cascaded PD with a geometric attitude law; **does not control yaw** |
 | 2 | `TemplateController` — skeleton to copy |
+
+> **Superseded.** Value 1 was originally `CascadedPidController`, a wrapper around
+> the stock `PositionControl` / `AttitudeControl` / `RateControl` objects that
+> served as the stock-equivalence baseline. It was replaced by an independent
+> cascaded PD law. Two consequences run through the rest of this document:
+> **(a)** no controller in this module is equivalent to stock any more, and the
+> `MulticopterControllers` library no longer links the stock control libraries at
+> all; **(b)** the always-allocated fallback (`_reference`) is that PD law, so a
+> fallback latch does *not* reach anything stock — that needs `MC_CTRL_ALG=0` and
+> a reboot. Sections describing the reference cascade as stock-equivalent are
+> retained as a build record and should be read in that light.
 
 Selection is a plain switch in `controllers/ControllerRegistry.cpp` rather than a
 code-generated registry. The `flight_mode_manager` generator exists because ~15
@@ -549,8 +560,9 @@ must not warn about it.
 | `src/modules/mc_controller/CommandFrontEnd/ControlLevelResolverTest.cpp` | nav_state truth table vs commander's own table |
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEnd.{hpp,cpp}` | setpoint sourcing, takeoff ramp, failsafe, limits |
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEndTest.cpp` | setpoint-sourcing semantics |
-| `src/modules/mc_controller/controllers/CascadedPidController.{hpp,cpp}` | stock cascade on the interface (baseline) |
-| `src/modules/mc_controller/controllers/CascadedPidControllerTest.cpp` | differential test vs hand-wired stock triple |
+| `src/modules/mc_controller/controllers/CascadedPdController.{hpp,cpp}` | cascaded PD, geometric attitude law, no yaw control |
+| `src/modules/mc_controller/controllers/CascadedPdControllerTest.cpp` | property tests for the PD law |
+| `src/modules/mc_controller/controllers/cascaded_pd_params.c` | `MC_PD_*` parameters |
 | `src/modules/mc_controller/controllers/TemplateController.{hpp,cpp}` | skeleton controller |
 | `src/modules/mc_controller/controllers/template_controller_params.c` | `MC_TPL_*` parameters |
 | `src/modules/mc_controller/controllers/ControllerRegistry.{hpp,cpp}` | `MC_CTRL_ALG` → controller |
@@ -797,6 +809,12 @@ contract across level change / disarm / landing; termination producing no comman
 **Results:** both builds green, params diff empty, suite 160/160.
 
 ### Stage 6 — The reference controller and the differential test
+
+> **Superseded** — see the note under `MC_CTRL_ALG`. This stage is the record of
+> how stock equivalence was originally established. The controller it describes
+> has since been replaced at `MC_CTRL_ALG=1` by an independent cascaded PD law,
+> and the differential test was deleted with it: there is no longer a stock twin
+> to compare against.
 
 **Changes:** `CascadedPidController` — wraps the very same `PositionControl`,
 `AttitudeControl` and `RateControl` objects the stock modules use, reusing their
@@ -1152,7 +1170,7 @@ Baseline was 154 test binaries; the work adds 7, all passing (161/161).
 | `functional-VehicleStateProvider` | behavioural | filter DC pass-through and notch attenuation, reset semantics, dt clamps, freshness flags | numerical equality with stock's filter chain (Stage 6 covers it) |
 | `unit-ControlLevelResolver` | truth table vs commander's own `mode_util` | level resolution matches stock's gating for every `nav_state`; mutation-tested to prove it can fail | nothing about setpoint content |
 | `functional-CommandFrontEnd` | semantic | failsafe timing boundaries, EKF-reset-once, on-ground override, ramp monotonicity, publish/consume rules | bit-equality with stock — **no oracle exists** for this stage |
-| `functional-CascadedPidController` | differential vs hand-wired stock triple @ 1e-6 | the reference controller reproduces the stock cascade numerically across a 3000-step mode sweep | **a shared misunderstanding of stock** (it passed through the yaw feed-forward defect), and inter-module latency differences |
+| `functional-CascadedPidController` *(deleted)* | differential vs hand-wired stock triple @ 1e-6 | the reference controller reproduces the stock cascade numerically across a 3000-step mode sweep | **a shared misunderstanding of stock** (it passed through the yaw feed-forward defect), and inter-module latency differences |
 
 Plus SITL gates, which are scripted rather than in CI:
 
@@ -1241,7 +1259,7 @@ Plus SITL gates, which are scripted rather than in CI:
 | **`MC_CTRL_ALG=0` boot assertion** | parameter had been left at 2 in that run | boot with the default and check `mc_controller` is absent |
 | **VTOL** | out of scope; the module refuses to start on a VTOL airframe | — |
 | **Inner-loop cycle time** | **not measurable in SITL** — every `PC_ELAPSED` counter reports `0us elapsed`, for the stock modules too | hardware only: `perf` → `mc_controller: cycle` against the 2.5 ms budget at `IMU_GYRO_RATEMAX=400` |
-| **The outer/inner disjoint-state contract** | enforced by review, not the compiler | audit any controller that sets `hasOuterStage()`; only `CascadedPidController` does today |
+| **The outer/inner disjoint-state contract** | enforced by review, not the compiler | audit any controller that sets `hasOuterStage()`; no shipped controller does today |
 | **`rate sp pitch` / `rate sp yaw`** | flagged by the Stage 12 A/B, but marginal — the between-group max sits inside stock's own spread (16.6 vs 15.5); only the means differ | more flights, or accept as noise |
 
 ### Behavioural differences from stock that are real, not bugs
@@ -1268,7 +1286,7 @@ Plus SITL gates, which are scripted rather than in CI:
 ### Enable the framework
 
 ```
-param set MC_CTRL_ALG 1     # 1 = reference cascade, behaviourally equal to stock
+param set MC_CTRL_ALG 1     # 1 = cascaded PD (NOT equivalent to stock; no yaw control)
 reboot                      # 0 <-> non-zero changes which modules start
 mc_controller status
 ```
@@ -1295,10 +1313,10 @@ Five steps, detailed in [`README.md`](README.md):
   in, `updateOuter()` and `update()` run concurrently on different work queues and
   must touch disjoint members
 
-### Re-check equivalence after any change
+### Re-check after any change
 
 ```
-make tests TESTFILTER=CascadedPid            # differential vs stock triple
+make tests TESTFILTER=CascadedPd             # PD law properties
 make tests TESTFILTER=ControlLevelResolver
 make tests TESTFILTER=CommandFrontEnd
 make tests TESTFILTER=VehicleState

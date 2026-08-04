@@ -56,7 +56,7 @@ A monolithic full-stack law leaves it off and runs entirely on `rate_ctrl` — s
 ## Quick start
 
 ```
-param set MC_CTRL_ALG 1     # 1 = reference cascade (equivalent to stock)
+param set MC_CTRL_ALG 1     # 1 = cascaded PD
 reboot                      # 0 <-> non-zero changes which modules start
 mc_controller status
 ```
@@ -67,8 +67,26 @@ runs instead. Nothing changes until you deliberately enable it.
 | value | controller |
 |---|---|
 | 0 | stock `mc_pos_control` + `mc_att_control` + `mc_rate_control` |
-| 1 | `CascadedPidController` — the stock cascade on this interface, the A/B baseline |
+| 1 | `CascadedPdController` — cascaded PD with a geometric attitude law |
 | 2 | `TemplateController` — skeleton to copy |
+
+The controllers under `controllers/` are **independent implementations**, not
+re-wrappings of the stock cascade: they do not link `PositionControl`,
+`AttitudeControl` or `RateControl`, and they do not read the `MPC_` / `MC_` gains.
+Reaching the stock cascade means `MC_CTRL_ALG=0` and a reboot, because that is a
+decision about which modules the startup script launches.
+
+### `MC_CTRL_ALG=1` does not control yaw
+
+`CascadedPdController` builds its attitude setpoint around the vehicle's *current*
+heading every cycle, and the yaw axis gets rate damping only (`MC_PD_YAWR_D`,
+default `0`). RC yaw stick and mission yaw setpoints therefore do nothing, and
+heading free-runs. That is the design: a multirotor that has lost a rotor cannot
+hold heading, and surrendering yaw is what leaves enough authority to hold
+position.
+
+It is also the framework's always-allocated failsafe (`_reference`), so a fallback
+latch lands here rather than on anything stock.
 
 ## Adding a controller — 5 steps
 
@@ -83,7 +101,10 @@ runs instead. Nothing changes until you deliberately enable it.
    `DEFINE_PARAMETERS((ParamFloat<px4::params::MC_MY_GAIN>) _param_gain)`.
    Parameter refresh is automatic — `ModuleParams` cascades from the module.
 
-3. **Add both files to `SRCS`** in `controllers/CMakeLists.txt`.
+3. **Add `MyController.cpp/.hpp` to `SRCS`** in `controllers/CMakeLists.txt`.
+   Do **not** add the `_params.c` file: `src/lib/parameters/CMakeLists.txt`
+   glob-recurses `src/*params.c` and generates the definitions itself, so
+   compiling it into the library as well is a redefinition error.
 
 4. **Register it** in `controllers/ControllerRegistry.hpp/.cpp`: add an
    `Algorithm` enumerator and one `case`. `-Wswitch` will remind you if you add
@@ -156,9 +177,16 @@ and `update()` skips its own trajectory stage.
 > There is no lock, deliberately — a mutex on the gyro path is worse than the
 > latency it would remove.
 
-`CascadedPidController` opts in (`_position_control` is touched only by the outer
-stage; `_attitude_control` and `_rate_control` only by the inner). Measured
-placement, framework vs stock:
+Neither shipped controller opts in today. `CascadedPdController` deliberately does
+not: the whole law is a few dozen flops, so paying for the state-partitioning
+contract buys nothing, and its position stage still runs at position rate because
+`update()` gates it on `state.freshness.position_new`. **Gating on freshness, not
+splitting the queue, is the cheap way to get stage-rate parity** — reach for
+`hasOuterStage()` only when the outer stage is genuinely too expensive for the
+gyro path.
+
+The split path is still live and exercised by `OuterLoop`; measured placement when
+a controller does opt in, against stock:
 
 ```
 STOCK   wq:rate_ctrl            mc_rate_control       250.0 Hz
@@ -171,7 +199,7 @@ SPLIT   wq:rate_ctrl            mc_controller         250.0 Hz
 **Known deviation from stock:** the attitude stage sits on `rate_ctrl` here, not
 on `nav_and_controllers`. Deliberate — attitude is a cheap quaternion P law, and
 pairing it with the rate loop removes a uORB hop of latency from the fast
-cascade; `PositionControl` is the expensive part that needed to move. Exact stock
+cascade; the position stage is the expensive part that needed to move. Exact stock
 placement would need a third work item.
 
 ## Rules that will bite you
@@ -244,19 +272,21 @@ listener mc_controller_status # torque/thrust/motors, per-stage dt, fallback rea
 Every stage of this framework was gated; the record including every failure found
 is in [`src/lib/mc_manual_mapping/SMOKE_LOG.md`](../../lib/mc_manual_mapping/SMOKE_LOG.md).
 
-To re-check equivalence after changing anything:
+To re-check the framework after changing anything:
 
 ```
-make tests TESTFILTER=CascadedPid       # differential vs hand-wired stock triple
+make tests TESTFILTER=CascadedPd
 make tests TESTFILTER=ControlLevelResolver
 make tests TESTFILTER=CommandFrontEnd
 make tests TESTFILTER=VehicleState
 make tests TESTFILTER=ControllerApi
 ```
 
-Note the limitation that cost real debugging time: the `CascadedPidController`
-differential test compares against a **hand-wired twin written by the same
-author**, in one process with no uORB hop. It cannot detect a shared
-misunderstanding of stock (a dropped yaw feed-forward slipped through exactly
-that way), nor inter-module latency differences. The SITL A/B against the real
-stock modules is not redundant.
+Note what these can and cannot tell you. Everything below the controller — level
+resolution, state assembly, the command envelope, the fallback machinery — is
+still verified against the behaviour it was ported from. The **controller** is
+not: `CascadedPdController` is an independent control law, so its test asserts the
+properties the law is supposed to have (equilibrium, sign, saturation, tilt
+limit, yaw inaction, fail-closed on NaN) rather than agreement with anything.
+Whether the gains actually fly is a SITL and flight-test question, not a unit-test
+one — start from `tools/flight_profile.py`.

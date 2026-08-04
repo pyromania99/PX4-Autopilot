@@ -7,11 +7,14 @@ menuconfig MODULES_MC_CONTROLLER
 	---help---
 		Pluggable multicopter controller framework.
 
-		Selects the stock multicopter control modules because it reuses their
-		PositionControl / AttitudeControl / Takeoff / GotoControl libraries and
-		their MPC_*/MC_* parameter definitions (those libraries and parameters
-		only exist when the owning module is enabled), and because MC_CTRL_ALG=0
-		must remain available as the stock fallback.
+		Selects the stock multicopter control modules for three reasons: the
+		CommandFrontEnd reuses mc_pos_control's Takeoff library, the CommandFrontEnd
+		and VehicleStateProvider bind MPC_*/MC_* parameters that only exist when the
+		owning module is enabled, and MC_CTRL_ALG=0 must remain available so the
+		stock cascade is always one parameter and a reboot away.
+
+		The control laws under controllers/ do NOT link PositionControl,
+		AttitudeControl or RateControl - they implement their own maths.
 
 menuconfig USER_MC_CONTROLLER
 	bool "mc_controller running as userspace module"

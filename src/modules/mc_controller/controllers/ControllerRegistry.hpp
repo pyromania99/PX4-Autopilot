@@ -45,7 +45,7 @@
 
 #pragma once
 
-#include "CascadedPidController.hpp"
+#include "CascadedPdController.hpp"
 
 #include <MulticopterControllerBase.hpp>
 
@@ -54,18 +54,18 @@ namespace mc_ctrl
 
 enum class Algorithm : int32_t {
 	Stock       = 0,	///< mc_controller is not started at all; stock modules run
-	CascadedPid = 1,	///< reference cascade, equivalent to Stock
+	CascadedPd  = 1,	///< cascaded PD, geometric attitude law, no yaw control
 	Template    = 2,	///< skeleton for new controllers
 };
 
 /**
  * @param alg        MC_CTRL_ALG value
  * @param parent     ModuleParams parent for the new controller
- * @param reference  the always-allocated reference cascade, returned for
- *                   Algorithm::CascadedPid so no second allocation occurs
+ * @param reference  the always-allocated fallback controller, returned for
+ *                   Algorithm::CascadedPd so no second allocation occurs
  * @return a controller; never nullptr (falls back to @p reference)
  */
-MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, CascadedPidController *reference);
+MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, CascadedPdController *reference);
 
 const char *algorithmName(int32_t alg);
 
