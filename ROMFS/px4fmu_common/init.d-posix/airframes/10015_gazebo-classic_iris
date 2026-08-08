@@ -21,33 +21,10 @@ param set-default CA_ROTOR1_PY -0.1875
 param set-default CA_ROTOR1_KM 0.05
 param set-default CA_ROTOR2_PX 0.1515
 param set-default CA_ROTOR2_PY -0.245
-param set-default CA_ROTOR2_KM 0.05
+param set-default CA_ROTOR2_KM -0.05
 param set-default CA_ROTOR3_PX -0.1515
 param set-default CA_ROTOR3_PY 0.1875
-param set-default CA_ROTOR3_KM 0.05
-
-param set-default MC_CTRL_ALG 1
-
-# Cascaded PD gains ported from the Isaac Sim prototype
-# (PegasusSimulator/examples/utils/cascaded_pd_controller.py). The shipped
-# defaults are stock's cascade collapsed into one gain rather than the
-# prototype's tuning: their rate-setpoint gain MC_PD_ATT_P/MC_PD_ATT_D is
-# 4.0 1/s against the prototype's 0.89 1/s, and the law has no rate integrator
-# or filter to damp that back down over the HIL link.
-#
-# Z gains transfer exactly - both sides are m/s^2 per m. The attitude pair is
-# converted from the prototype's physical N.m to normalized torque, so it is a
-# starting point rather than an equivalent; keep the P/D ratio near 0.9 when
-# retuning. MC_PD_XY_P/D already match the prototype at 0.50/1.00.
-param set-default MC_PD_Z_P 15.0
-param set-default MC_PD_Z_D 8.0
-param set-default MC_PD_ATT_P 0.36
-param set-default MC_PD_ATT_D 0.40
-
-# The Pegasus Iris hovers at ~0.58, not the 0.5 default: 1.6186 kg / 15.879 N
-# against a 10.34 N per-rotor ceiling. The estimator converges there on its own
-# but starts the collective ~16% low.
-param set-default MPC_THR_HOVER 0.58
+param set-default CA_ROTOR3_KM -0.05
 
 param set-default PWM_MAIN_FUNC1 101
 param set-default PWM_MAIN_FUNC2 102

@@ -11,18 +11,346 @@
 param set-default CA_AIRFRAME 0
 
 param set-default CA_ROTOR_COUNT 4
-param set-default CA_ROTOR0_PX 0.1515
-param set-default CA_ROTOR0_PY 0.245
+# Rotor positions MEASURED from the vehicle, not the stock Gazebo-iris values.
+# examples/px4_tuning/probe_geometry.py reads them with get_relative_body_poses -
+# the same call Multirotor.force_and_torques_to_velocities uses to build its own
+# allocation matrix (multirotor.py:199) - so these are the arms the simulator
+# actually flies, not an authored USD opinion. Converted FLU -> FRD (y negated).
+#
+# The stock values were wrong two ways: pitch arms 10-18% too long (0.1515 against
+# an actual 0.125-0.138), and a fabricated roll asymmetry (0.245 vs 0.1875) where
+# the vehicle is in fact near-uniform at 0.203-0.222.
+#
+# Expect no behavioural change from this. It removes an 11% roll/pitch imbalance
+# in the model and introduces no cross-axis leakage either way (0.0% before and
+# after - the error was structurally diagonal, so the pseudo-inverse decoupled the
+# axes regardless). It is applied because the model was measurably wrong, not
+# because it fixes a flight problem.
+param set-default CA_ROTOR0_PX 0.1376
+param set-default CA_ROTOR0_PY 0.2067
+param set-default CA_ROTOR1_PX -0.1250
+param set-default CA_ROTOR1_PY -0.2187
+param set-default CA_ROTOR2_PX 0.1383
+param set-default CA_ROTOR2_PY -0.2032
+param set-default CA_ROTOR3_PX -0.1245
+param set-default CA_ROTOR3_PY 0.2220
+
+# All four KM the same sign, not the stock +,+,-,- : the Pegasus Iris runs
+# rot_dir = [-1,-1,-1,-1], i.e. every rotor turns the same way, so there is no
+# differential yaw authority to model. This makes the allocator's belief match
+# the vehicle. It also means the yaw row is collinear with the thrust row -
+# harmless here because the cascaded PD law commands no yaw torque at all.
 param set-default CA_ROTOR0_KM 0.05
-param set-default CA_ROTOR1_PX -0.1515
-param set-default CA_ROTOR1_PY -0.1875
 param set-default CA_ROTOR1_KM 0.05
-param set-default CA_ROTOR2_PX 0.1515
-param set-default CA_ROTOR2_PY -0.245
-param set-default CA_ROTOR2_KM -0.05
-param set-default CA_ROTOR3_PX -0.1515
-param set-default CA_ROTOR3_PY 0.1875
-param set-default CA_ROTOR3_KM -0.05
+param set-default CA_ROTOR2_KM 0.05
+param set-default CA_ROTOR3_KM 0.05
+
+# Thrust coefficient matched to the Pegasus thrust curve rather than left at the
+# 6.5 default. Pegasus computes F = rotor_constant * omega^2 with
+# rotor_constant = 8.54858e-6, and single_vehicle.py drives it with
+# omega = 1100*u (input_scaling 1100, zero_position_armed 0), so
+#   F = 8.54858e-6 * (1100u)^2 = 10.344 * u^2
+# which is exactly PX4's CT*u^2 model with CT = 10.344. At the 6.5 default PX4
+# believed each rotor produced ~1.8x less thrust than it really does, so every
+# normalized torque command landed that much harder than intended - and by a
+# factor that moved with throttle, because the old omega = 1000u+100 mapping did
+# not pass through the origin. The collective hid this via the hover thrust
+# estimator; the torque axis has no such calibration and ate the whole error.
+param set-default CA_ROTOR0_CT 10.344
+param set-default CA_ROTOR1_CT 10.344
+param set-default CA_ROTOR2_CT 10.344
+param set-default CA_ROTOR3_CT 10.344
+
+param set-default MC_CTRL_ALG 1
+
+# Cascaded PD gains ported from the Isaac Sim prototype
+# (PegasusSimulator/examples/utils/cascaded_pd_controller.py). The shipped
+# defaults are stock's cascade collapsed into one gain rather than the
+# prototype's tuning: their rate-setpoint gain MC_PD_ATT_P/MC_PD_ATT_D is
+# 4.0 1/s against the prototype's 0.89 1/s, and the law has no rate integrator
+# or filter to damp that back down over the HIL link.
+#
+# Z gains transfer exactly - both sides are m/s^2 per m. The attitude pair is a
+# physical-N.m to normalized-torque conversion and is only meaningful now that
+# CA_ROTOR*_CT above is correct; re-derive it if that changes. MC_PD_XY_P/D
+# match the prototype at 0.50/1.00, except XY_D is raised because this law damps
+# on lagged EKF velocity where the prototype used an exact numerical derivative.
+param set-default MC_PD_Z_P 15.0
+param set-default MC_PD_Z_D 8.0
+param set-default MC_PD_XY_D 1.6
+
+# Attitude pair. These are the known-flying values, NOT the Isaac Sim sweep
+# optimum - see below. examples/px4_tuning/ re-tunes them against this stack.
+#
+# The mm=2.0e-07 Pareto front gave Kp_att = 5.283, Kd_att = 3.000 physical N.m,
+# which converts with K = 4.4325 N.m per unit normalized torque to
+# MC_PD_ATT_P 1.192 / MC_PD_ATT_D 0.677. That pair FAILS here: it limit-cycles
+# at 12.7 Hz from the instant of takeoff, burning ~80 % of torque authority as
+# pure rate damping while attitude error sits at 0.03 rad, and departs once the
+# spin builds. The Isaac Sim controller it was tuned against reads exact state
+# in-process and has no transport lag; this path carries ~39 ms, and derivative
+# gain is precisely what delay punishes. A lag-free Pareto front cannot be
+# transferred here - the plant it optimised against is not this plant.
+#
+# K is still the right conversion once gains are valid, and is derived rather
+# than estimated: ControlAllocationPseudoInverse::updateControlAllocationMatrixScale()
+# sets scale = sqrt(||pinv(B).col||^2 / (n_nonzero/2)) over roll and pitch and
+# takes the max; K = 1/scale for the B built from CA_ROTOR*_CT/PX/PY above.
+# Re-derive K if any CA_ROTOR value changes.
+param set-default MC_PD_ATT_P 0.36
+param set-default MC_PD_ATT_D 0.40
+
+# Gyro low-pass cutoff raised from the 40 Hz default. This filter sits on
+# vehicle_angular_velocity and is the only PX4-side filter in the rate path -
+# VehicleStateProvider copies angular_velocity raw, and EKF2 is not in this path
+# at all, so no EKF2_*_DELAY parameter is relevant to it. Its own documentation
+# notes it "only affects the angular velocity sent to the controllers, not the
+# estimators", so raising it costs the estimator nothing. 40 Hz exists to reject
+# motor noise that a simulator does not produce; at 100 Hz the phase lag at the
+# observed 12.7 Hz limit-cycle frequency drops by roughly 3-4 ms.
+param set-default IMU_GYRO_CUTOFF 100.0
+
+# Raised from 400 so it does not become the binding constraint when the Pegasus
+# physics/update rate goes to 500 Hz. Discrete-valued: 100/250/400/800/1000/2000.
+param set-default IMU_GYRO_RATEMAX 800
+
+# ── EKF2, retuned for a 250 Hz HIL vehicle that spins ────────────────────────
+#
+# The stock values are for a real airframe with real sensor transport delays and a
+# gently-manoeuvring flight envelope. This vehicle sustains 7-10 rad/s of yaw, where
+# the estimator - not the controller - is what fails: with the defaults the attitude
+# estimate walks away from ground truth (0.03 deg -> 20-80 deg) while EKF2's own
+# innovation test ratios sit at 0.05 against a 1.0 rejection threshold. It is
+# confidently, silently wrong, and no control law survives being told it is level
+# when it is 25 deg over.
+#
+# EVIDENCE. Across 26 logged flights at r > 6.5 rad/s, every flight that set
+# EKF2_PREDICT_US 4000 flew clean and every flight that did not diverged:
+#   CLEAN     184036 (alg=1, 68 s), 200945 (alg=1, 78 s), 204347 (alg=3, 163 s)
+#             coning 0.010-0.021 rad/s rms, growth ~0.000/s at r = 7.85
+#   DIVERGED  23 flights, coning 0.25-1.96 rms, growth +0.04 to +0.27/s
+# Both control laws are represented on both sides, which is the point: this is not a
+# gain. Note the same configuration diverged and flew clean on different runs BEFORE
+# this change, so treat single flights as weak evidence and prefer repeats.
+
+# 100 Hz filter update against a 250 Hz IMU meant 4.5 deg of vehicle rotation per
+# EKF step at 7.9 rad/s. At 250 Hz it is 1.8 deg. This is the parameter the three
+# clean flights have in common, and the only one of the three below that is not
+# reboot_required - i.e. the only one that provably took effect when set live.
+param set-default EKF2_PREDICT_US 4000
+
+# Set together with the above on the two longest clean flights. Both are carried here
+# because that is the configuration that flew, NOT because either is independently
+# demonstrated - EKF2_DELAY_MAX is reboot_required, so the live QGC set that
+# "validated" it never reached the running estimator. Putting it in the airframe is
+# the first time it actually applies, which is a change in itself: re-verify.
+#
+# 100 ms still spans 79 deg of rotation at 7.9 rad/s. The largest delay that actually
+# applies to this vehicle is GPS; ASP (100 ms) is airspeed and OF (20 ms) is optical
+# flow, neither of which exists here. There is likely room to go lower.
+param set-default EKF2_DELAY_MAX 100.0
+param set-default EKF2_GPS_DELAY 30.0
+
+# Corrected 2026-08-08 by examples/px4_tuning/derive_px4_params.py, which reads the mass
+# and thrust curve out of the running simulation. Rotor thrust is QUADRATIC in the
+# normalized command, so hover is sqrt(m*g / (4*CT)) = sqrt(15.879/41.375) = 0.6195, not
+# the ratio 15.879/41.375 = 0.384 nor the 0.58 previously here. Confirmed in flight: the
+# clean zero-spin hover ran motors 0.591-0.648, mean 0.62.
+param set-default MPC_THR_HOVER 0.61949
+
+# ── Eigen-dynamics controller (MC_CTRL_ALG=3) ────────────────────────────────
+#
+# eigen_params.c ships the Isaac Sim prototype's CONSTRUCTOR DEFAULTS - the
+# un-tuned starting point in eigen_controller.py's signature - not its swept
+# results. The GA evaluated that exact point: wn=18.0, b=10.2, Kp_att=7.0 is
+# rank 6 at mm=2.7e-7 in results/pareto_top/pareto_top.json, off the Pareto
+# front, scoring 0.2130 at effort 48.89 against the front's 0.1071 at 0.148.
+# That is 2x the score and 330x the effort of the best front point.
+#
+# Physical properties first - this law is a feedback linearization working in
+# real N.m, so these are not tuning knobs, they are measurements. Getting them
+# wrong rescales the whole inner loop.
+
+# Composite inertia, not the /body link alone. Measured /body values are
+# (0.029125, 0.029125, 0.055225) with total mass 1.618615 kg
+# (examples/utils/vehicle_params.py). The four rotors sit ~0.25 m out, so their
+# parallel-axis contribution is not negligible. Roll and pitch take the full
+# term because the revolute joint is rigid about x and y; yaw takes only
+# m*(x^2+y^2) because that joint is free about the rotor's own z, so a rotor's
+# own Izz is decoupled from the airframe's. The shipped 0.01/0.01/0.02 are
+# 3.2-3.5x too small.
+param set-default MC_EIG_IXX 0.03477
+# IYY/IZZ corrected 2026-08-08 from derive_px4_params.py, which computes the composite
+# from the LIVE physics scene rather than by hand. IXX agrees to 0.2% and is left alone;
+# these two were out by 1.9% and 1.5%.
+param set-default MC_EIG_IYY 0.03126
+param set-default MC_EIG_IZZ 0.06266
+
+# Full-scale torque, converting this law's N.m into the normalized value
+# control_allocator wants. Derived from ControlAllocationPseudoInverse's own
+# normalization - scale = sqrt(||pinv(B).col||^2 / (n_nonzero/2)) over roll and
+# pitch, K = 1/max - evaluated on B built from the MEASURED rotor geometry above,
+# which gives 3.843 N.m. Re-derive it if any CA_ROTOR value changes.
+#
+# This previously read 2.20, from regressing commanded torque against angular
+# acceleration. That regression was confounded: the measured acceleration also
+# contains omega x (I*omega), which is exactly what the commanded torque is
+# partly cancelling, so fitting one against the other biased the slope down by
+# about half. Removing the gyroscopic term from the regressand gives 4.383 on
+# roll against an analytic 4.262 for the old geometry - a 2.8% agreement that
+# confirms the derivation and retires the measurement.
+#
+# Pitch is not yet reconciled: it measures 1.98 where the same derivation
+# predicts 3.84. Geometry, inertia and the normalization have all been ruled out.
+# The open suspect is ControlAllocationSequentialDesaturation (CA_METHOD=1), which
+# allocates axes in priority order rather than as a pseudo-inverse. Until that is
+# settled this single scalar cannot be right for both axes.
+param set-default MC_EIG_TRQ_MAX 3.843
+
+# Log at full rate rather than the decimated defaults. actuator_motors ships at
+# 100 ms and vehicle_angular_velocity / rates_setpoint / torque_setpoint at 20 ms
+# (logged_topics.cpp:138-221), which is 7-30 samples per cycle against the ~1.4 Hz
+# modes under investigation - enough to see a mode, not enough to identify one. An
+# attempt to regress the rotor arms from actuator_motors at 10 Hz returned
+# sign-flipped nonsense with a flattering R^2 of 0.97.
+#
+# 25 = 1 (default) | 8 (system identification) | 16 (high rate), which logs
+# sensor_combined, vehicle_angular_velocity, vehicle_rates_setpoint,
+# vehicle_torque_setpoint and actuator_motors unthrottled.
+# 27 = 1 (default) | 2 (estimator replay) | 8 (system identification) | 16 (high rate).
+#
+# Bit 2 was added 2026-08-08 for the *_groundtruth topics: logged_topics.cpp:243-246 adds
+# them in the SITL/EKF-replay block, and without it there is no way to ask whether the
+# ESTIMATE degrades under spin - which is one of the few remaining candidate mechanisms
+# for the divergence above ~7 rad/s, and is not testable from estimator output alone.
+# The old gz x500 logs had them only because they ran SDLOG_PROFILE 131 (which sets bit 2);
+# every Pegasus log so far has been blind to it.
+param set-default SDLOG_PROFILE 27
+
+# Position gains. XY are already in acceleration units and transfer directly.
+# Z: the prototype's kp_z=15 N/m and kd_z=8 N/(m/s) divided by the REAL vehicle
+# mass of 1.618615 kg, not the 1.5 assumed in eigen_params.c nor the 1.2 in the
+# prototype's own constructor.
+param set-default MC_EIG_XY_P 0.5
+param set-default MC_EIG_XY_D 1.0
+param set-default MC_EIG_Z_P 9.27
+param set-default MC_EIG_Z_D 4.94
+
+# Attitude and rate gains from the GA Pareto front at mm=2.7e-7, the nearest
+# swept operating point to 2.0e-7. Kp_att=4.68 / Kd_att=1.0 recur on essentially
+# every front entry at both swept motor moments, so they are the robust choice;
+# eigen_params.c's ATT_P of 7.0 comes from the constructor default instead.
+#
+# wn/b are rank 2 (wn=16.336, b=13.149), chosen on cross-coupling authority with
+# latency as a secondary constraint.
+#
+# !! THE "CROSS-COUPLING AUTHORITY" PARAGRAPH BELOW IS WRONG (2026-08-08). !!
+# With perfect gyroscopic cancellation the rate error obeys
+#     Om_err(t) = Om_err(0) * exp(-wn*t) * exp(+i*b*t)
+# so b is the imaginary part of a complex FIRST-ORDER eigenvalue - it sets the
+# direction the error spirals, not the decay rate, which is wn regardless of b.
+# b therefore CANNOT stabilise the coning mode or anything else, and it costs
+# margin: the loop delay acts at |wn - i*b| = sqrt(wn^2 + b^2), which b only raises.
+# The explicit omega x (I*omega) term does the gyroscopic cancellation, not b, and a
+# POSITIVE b rotates the same way as any residual rather than against it.
+#
+# The paragraph is kept because the values it produced were flown and are in the
+# logs; do not use its reasoning to pick new ones.
+#
+#   CROSS-COUPLING AUTHORITY is what decided it. MC_EIG_B stabilizes the coning
+#   mode, which sits near ((Izz-Ixx)/Ixx)*r = 6.5 rad/s at the ~7.9 rad/s spin
+#   this airframe runs. rank2's b=13.149 is 2.0x that. rank3's b=0.309 is 0.05x -
+#   functionally zero, and the parameter's own documentation notes that b=0
+#   "decouples the axes and recovers a conventional rate law". That switches off
+#   the one feature this controller exists to provide, on a vehicle whose entire
+#   reason for using it is that it spins.
+#
+#   LATENCY bounds it from above. Re-measured 2026-08-07 on the first flight
+#   verified to have actually loaded THIS airframe (every earlier log was
+#   SYS_AUTOSTART=4001, a Gazebo x500): tau = 12.0 ms, both axes at r=0.90.
+#   That is down from 16 ms because IMU_GYRO_CUTOFF went 40 -> 100 below.
+#
+#   At the MC_EIG_WN=24 actually set here, wn*tau = 0.29 rad (16.5 deg). The
+#   0.26 rad/15 deg quoted previously was for rank2's wn=16.336 against the old
+#   16 ms and no longer describes this configuration. rank1's wn=47.713 would be
+#   0.57 rad (33 deg) - still the phase erosion that limit-cycled the cascaded
+#   PD gains. For scale, 250 Hz discretization costs only wn*T/2 = 2.8 deg, so
+#   delay outweighs sample rate roughly 6:1 and loop RATE is not the constraint.
+#
+# rank3 was tried first, for its best-in-front GA score (0.1071) and softest
+# latency penalty, and it crashed: an oscillation building from t=35 s with motors
+# on both rails by t=53 s. That mode was confirmed gyroscopic rather than a
+# control-loop resonance by checking whether its frequency tracks the spin rate,
+# which it does - corr +0.72, slope 0.74 rad/s per rad/s of spin against the 0.83
+# the rigid-body coupling predicts, where a fixed loop resonance would give slope
+# zero. Worth repeating that test before blaming gains for any oscillation here:
+# frequency-versus-spin separates a plant mode from a loop mode in one plot, and
+# reasoning from the frequency alone does not.
+#
+# Cascade separation is a separate concern and rank2 happens to satisfy it too
+# (wn/MC_EIG_ATT_P = 3.5x, against rank3's 1.45x where the loops would interact),
+# but it was NOT the mechanism behind the rank3 crash.
+# Raised from the GA's 4.68 to damp the Euler-kinematic coupling mode.
+#
+# angleToRateSetpoint commands BODY rates to correct EULER angle errors, but body
+# rates are not Euler-angle derivatives while the vehicle is yawing:
+#
+#   phi_dot ~ p + r*theta        theta_dot ~ q - r*phi
+#
+# At r ~ 7 rad/s those r-terms dominate, so commanding p = K*phi_err does not
+# drive phi_err to zero - much of phi_dot comes from r*theta, which the setpoint
+# never accounts for. Closing that loop gives
+#
+#   phi_dot = -K*phi + r*theta       eigenvalues -K +/- j*r
+#   theta_dot = -K*theta - r*phi     wn = sqrt(K^2+r^2)   zeta = K/sqrt(K^2+r^2)
+#
+# and the prediction is confirmed in flight: sqrt(4.68^2+7.35^2) = 8.71 against a
+# measured 8.84 rad/s in stabilized (1.4% error), and 8.37 vs 8.59 in a second
+# flight (2.6%). This mode is what diverges once b and ATT_D are set correctly.
+#
+# zeta rises with K, so the gain must go UP, not down: 0.20 at K=1.5, 0.54 at the
+# GA's 4.68, 0.74 at 8.0. Against that, wn rises with K too and the loop's own
+# phase lag grows with wn, so margin peaks around K = 8-10 and falls again by 16.
+# WN is raised alongside to hold cascade separation near 3x, which also buys back
+# phase at the higher wn.
+#
+# The proper fix is a code change: invert the Euler kinematics in the rate
+# setpoint, p_sp = K*phi_err - r*theta and q_sp = K*theta_err + r*phi, which
+# removes the coupling instead of damping it. That would make this mode vanish
+# rather than merely be survivable, and would lift the spin ceiling with it.
+param set-default MC_EIG_ATT_P 8.0
+param set-default MC_EIG_WN 20.0
+param set-default MC_EIG_B 0.0
+
+# Cut from the GA's 1.0 because at 1.0 this term self-excites. It is a finite
+# difference of the angle error (EigenController::angleToRateSetpoint), so its
+# gain rises with frequency; measured in flight it produced 8.4x (roll) and 9.4x
+# (pitch) more rate setpoint than the proportional path, reconstructing the
+# commanded rate to corr +0.99. A 0.016 rad rms attitude error became 0.61 rad/s
+# of commanded rate at the 39 rad/s the loop was ringing at, which drives torque,
+# which moves the vehicle, which feeds the derivative again.
+#
+# The GA cannot see this: its loop has no transport lag, and its prototype
+# differentiates an exact attitude rather than an estimate. Kd_att=1.0 is on
+# every front entry there and is still wrong here.
+#
+# 0.0 is the clean isolation test if the mode persists - MC_EIG_WN is the primary
+# rate damping and this is explicitly "a second damping path stacked on" it, so
+# zero is a valid configuration, just a less damped one.
+param set-default MC_EIG_ATT_D 0.025
+
+# Assumed aerodynamic damping the linearization cancels, so it ADDS energy and
+# overestimating it destabilizes. Left at the prototype values - the GA never
+# swept them, and nothing here measures them.
+param set-default MC_EIG_ALPHA 0.0
+# BETA is the yaw rate damping the linearization cancels. multirotor.py:145 applies
+# -0.035*r N.m/(rad/s), so the value that cancels it exactly is 0.035/Izz = 0.5586.
+#
+# ALPHA stays at 0 deliberately. Its exact-cancellation value is 0.02/Ixx = 0.5738, but
+# cancelling real damping REMOVES stabilising margin and over-estimating it adds energy.
+# Leaving it at 0 keeps damping the design never asked for, which is the safe direction.
+# Do not "correct" it without a flight test that isolates it.
+param set-default MC_EIG_BETA 0.55858
 
 param set-default PWM_MAIN_FUNC1 101
 param set-default PWM_MAIN_FUNC2 102

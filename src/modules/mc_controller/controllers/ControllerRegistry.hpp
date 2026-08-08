@@ -56,6 +56,7 @@ enum class Algorithm : int32_t {
 	Stock       = 0,	///< mc_controller is not started at all; stock modules run
 	CascadedPd  = 1,	///< cascaded PD, geometric attitude law, no yaw control
 	Template    = 2,	///< skeleton for new controllers
+	Eigen       = 3,	///< eigen dynamics, cross-coupled roll/pitch rate law
 };
 
 /**

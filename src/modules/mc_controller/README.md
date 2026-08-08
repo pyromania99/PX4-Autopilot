@@ -69,6 +69,7 @@ runs instead. Nothing changes until you deliberately enable it.
 | 0 | stock `mc_pos_control` + `mc_att_control` + `mc_rate_control` |
 | 1 | `CascadedPdController` — cascaded PD with a geometric attitude law |
 | 2 | `TemplateController` — skeleton to copy |
+| 3 | `EigenController` — eigen dynamics, cross-coupled roll/pitch rate law |
 
 The controllers under `controllers/` are **independent implementations**, not
 re-wrappings of the stock cascade: they do not link `PositionControl`,

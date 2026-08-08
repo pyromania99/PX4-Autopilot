@@ -15,8 +15,12 @@ parameters:
             starts mc_controller in place of that chain.
 
             The laws mc_controller offers are independent implementations, not
-            re-wrappings of the stock one. 1 in particular does not control yaw at
-            all; see MC_PD_YAWR_D.
+            re-wrappings of the stock one. Neither 1 nor 3 holds heading; see
+            MC_PD_YAWR_D and MC_EIG_BETA.
+
+            3 works in physical units and needs its rigid-body parameters set for
+            the airframe before it will fly properly: MC_EIG_IXX / IYY / IZZ and
+            MC_EIG_TRQ_MAX.
 
             Changing between 0 and non-zero requires a reboot because it changes
             which modules the startup script launches. Changing between non-zero
@@ -27,6 +31,7 @@ parameters:
           0: Stock cascade (mc_pos/att/rate_control modules)
           1: Cascaded PD (geometric attitude, no yaw control)
           2: Template controller
+          3: Eigen dynamics (cross-coupled roll/pitch rate, no yaw control)
         default: 0
         reboot_required: true
         category: System

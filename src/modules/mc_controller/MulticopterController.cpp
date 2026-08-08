@@ -634,10 +634,17 @@ void MulticopterController::publishOutput(const mc_ctrl::ControllerOutput &outpu
 	// outside a position mode. Publishing a held setpoint through Stabilized/Acro
 	// hands the flight tasks a stale reset origin and makes altitude tracking look
 	// broken in the log even though the vehicle is flying correctly.
-	if ((_last_level == mc_ctrl::ControlLevel::Trajectory) && !_front_end.outerStageActive()
-	    && (active == _reference || _controller == _reference)) {
+	//
+	// Filled through the base-class hook rather than off _reference, so a third-party
+	// controller that runs its own position stage on this queue still gets its setpoint
+	// published. Gating this on `active == _reference` was invisible while the reference
+	// was the only single-queue controller, but it silently starves the topic for any
+	// other one - the exact starvation the paragraph above describes. A controller with no
+	// internal position setpoint leaves the hook unimplemented and publishes the zeroed
+	// struct, matching what OuterLoop already does on the split path.
+	if ((_last_level == mc_ctrl::ControlLevel::Trajectory) && !_front_end.outerStageActive()) {
 		vehicle_local_position_setpoint_s local_sp{};
-		_reference->getLocalPositionSetpoint(local_sp);
+		active->fillLocalPositionSetpoint(local_sp);
 		local_sp.timestamp = now;
 		_local_position_setpoint_pub.publish(local_sp);
 	}

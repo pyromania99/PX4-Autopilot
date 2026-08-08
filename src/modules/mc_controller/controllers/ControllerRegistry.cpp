@@ -32,6 +32,7 @@
  ****************************************************************************/
 
 #include "ControllerRegistry.hpp"
+#include "EigenController.hpp"
 #include "TemplateController.hpp"
 
 #include <px4_platform_common/log.h>
@@ -49,6 +50,9 @@ MulticopterControllerBase *createController(int32_t alg, ModuleParams *parent, C
 
 	case Algorithm::Template:
 		return new TemplateController(parent);
+
+	case Algorithm::Eigen:
+		return new EigenController(parent);
 
 	case Algorithm::Stock:
 
@@ -70,6 +74,8 @@ const char *algorithmName(int32_t alg)
 	case Algorithm::CascadedPd: return "cascaded_pd";
 
 	case Algorithm::Template: return "template";
+
+	case Algorithm::Eigen: return "eigen";
 
 	}
 

@@ -37,6 +37,8 @@ px4_add_library(MulticopterControllers
 	CascadedPdController.hpp
 	ControllerRegistry.cpp
 	ControllerRegistry.hpp
+	EigenController.cpp
+	EigenController.hpp
 	TemplateController.cpp
 	TemplateController.hpp
 )
@@ -51,7 +53,10 @@ target_link_libraries(MulticopterControllers PUBLIC
 	MulticopterControllerApi
 )
 
-# Functional gtest: CascadedPdController uses DEFINE_PARAMETERS, so the live parameter
-# system is required.
+# Functional gtests: both controllers use DEFINE_PARAMETERS, so the live parameter system
+# is required.
 px4_add_functional_gtest(SRC CascadedPdControllerTest.cpp
+	LINKLIBS MulticopterControllers MulticopterControllerApi)
+
+px4_add_functional_gtest(SRC EigenControllerTest.cpp
 	LINKLIBS MulticopterControllers MulticopterControllerApi)
