@@ -147,6 +147,11 @@ bool MulticopterController::instantiateController(int32_t alg)
 	_active_alg = alg;
 	_pending_alg = -1;
 
+	if (_param_mc_ctrl_gt.get() != 0) {
+		PX4_WARN("MC_CTRL_GT=1: flying on SIMULATOR GROUND TRUTH, not the estimator");
+		mavlink_log_critical(nullptr, "MC_CTRL_GT: controller on ground truth\t");
+	}
+
 	PX4_INFO("controller: %s (MC_CTRL_ALG=%d), levels=0x%02x, queues=%s",
 		 _controller->name(), (int)alg, _controller->supportedLevels(),
 		 _controller->hasOuterStage() ? "split (stock separation)" : "single (gyro rate)");
@@ -192,15 +197,22 @@ void MulticopterController::handleParameterUpdate()
 
 void MulticopterController::pollInputs()
 {
+	// MC_CTRL_GT swaps the state source for simulator ground truth. Read once per cycle
+	// into a local rather than branching twice below, and note the ground-truth topics are
+	// the SAME message types - the substitution ends at the subscription.
+	const bool use_groundtruth = (_param_mc_ctrl_gt.get() != 0);
+
 	vehicle_attitude_s attitude;
 
-	if (_vehicle_attitude_sub.update(&attitude)) {
+	if (use_groundtruth ? _vehicle_attitude_gt_sub.update(&attitude)
+	    : _vehicle_attitude_sub.update(&attitude)) {
 		_state_provider.updateAttitude(attitude);
 	}
 
 	vehicle_local_position_s local_position;
 
-	if (_vehicle_local_position_sub.update(&local_position)) {
+	if (use_groundtruth ? _vehicle_local_position_gt_sub.update(&local_position)
+	    : _vehicle_local_position_sub.update(&local_position)) {
 		// Kept running even while the outer item owns the position stage and nothing
 		// here reads the result. Skipping it would save the velocity filter chain on the
 		// rate_ctrl queue - a notch, two low passes and a derivative at ~100 Hz, so a

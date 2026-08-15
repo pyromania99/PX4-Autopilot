@@ -182,6 +182,20 @@ private:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
 	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
+
+	/**
+	 * Simulator ground truth, used in place of the two above when MC_CTRL_GT is set.
+	 * Same message types, so the state path is unchanged below the subscription.
+	 *
+	 * Always constructed rather than allocated on demand: a uORB::Subscription with no
+	 * publisher is inert and costs one unused instance, and the alternative is branching
+	 * on a parameter inside the rate-loop hot path to decide whether an object exists.
+	 */
+	// ORB_ID only - vehicle_attitude_groundtruth and vehicle_local_position_groundtruth are
+	// topic ALIASES of the same messages (declared by "# TOPICS" in VehicleAttitude.msg:14
+	// and VehicleLocalPosition.msg:87), so they share the headers already included above.
+	uORB::Subscription _vehicle_attitude_gt_sub{ORB_ID(vehicle_attitude_groundtruth)};
+	uORB::Subscription _vehicle_local_position_gt_sub{ORB_ID(vehicle_local_position_groundtruth)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
@@ -228,6 +242,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::MC_CTRL_ALG>)      _param_mc_ctrl_alg,
+		(ParamInt<px4::params::MC_CTRL_GT>)       _param_mc_ctrl_gt,
 		(ParamInt<px4::params::MC_CTRL_WD_MS>)    _param_mc_ctrl_wd_ms,
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time

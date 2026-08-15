@@ -36,6 +36,35 @@ parameters:
         reboot_required: true
         category: System
 
+      MC_CTRL_GT:
+        description:
+          short: Feed the controller SIMULATOR GROUND TRUTH instead of the estimate
+          long: |
+            SITL / HIL ONLY, and a research tool rather than a flight setting. When set,
+            VehicleStateProvider consumes vehicle_attitude_groundtruth and
+            vehicle_local_position_groundtruth in place of the EKF2 outputs, so the control
+            law sees a perfect state with no estimator error, no fusion lag and no
+            transport delay on the state path.
+
+            Why it exists: the spin ceiling on this airframe was an estimator failure
+            (EKF2 running at 100 Hz against a 250 Hz IMU) that looked exactly like a
+            control problem for days. Tuning against truth separates "these gains are
+            wrong" from "the state reaching them is wrong" - one run tells you which,
+            where a flight log alone cannot.
+
+            The ground-truth topics carry the SAME message type as their estimated
+            counterparts and SimulatorMavlink sets the validity flags and heading
+            (SimulatorMavlink.cpp:59-88), so this is a drop-in substitution.
+
+            On real hardware nothing publishes these topics, the subscriptions stay empty,
+            and the controller keeps its last state - which is why this must never be left
+            on outside simulation.
+        type: int32
+        default: 0
+        values:
+          0: Estimator (vehicle_attitude / vehicle_local_position)
+          1: Ground truth (simulation only)
+
       MC_CTRL_WD_MS:
         description:
           short: Controller output watchdog timeout
