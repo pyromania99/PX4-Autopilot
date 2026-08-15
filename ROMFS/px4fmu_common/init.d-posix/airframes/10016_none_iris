@@ -61,7 +61,7 @@ param set-default CA_ROTOR1_CT 10.344
 param set-default CA_ROTOR2_CT 10.344
 param set-default CA_ROTOR3_CT 10.344
 
-param set-default MC_CTRL_ALG 1
+param set-default MC_CTRL_ALG 3
 
 # Cascaded PD gains ported from the Isaac Sim prototype
 # (PegasusSimulator/examples/utils/cascaded_pd_controller.py). The shipped
@@ -318,9 +318,49 @@ param set-default MC_EIG_Z_D 4.94
 # setpoint, p_sp = K*phi_err - r*theta and q_sp = K*theta_err + r*phi, which
 # removes the coupling instead of damping it. That would make this mode vanish
 # rather than merely be survivable, and would lift the spin ceiling with it.
-param set-default MC_EIG_ATT_P 8.0
-param set-default MC_EIG_WN 20.0
-param set-default MC_EIG_B 0.0
+# ── GA Pareto front, rank 3 at mm=2.7e-7 (2026-08-09) ────────────────────────
+#
+# results/pareto_top/pareto_top.json, eigen set at motor_moment 2.7e-7, whose runs
+# recorded r_ss = 13.23 rad/s - i.e. the GA searched at the spin where this vehicle
+# currently fails, not at hover.
+#
+# These transfer 1:1 with NO inertia scaling. wn/b/Kp_att/Kd_att are specified as
+# desired closed-loop dynamics (units 1/s); inertia enters only in tau = I*omega_dot_des,
+# and both sides use the same I. The GA controller syncs composite_mass_properties()
+# from the live vehicle and commands physical N.m through the USD's own allocation
+# (eigen_controller.py:438), so its model error is structurally zero; PX4's MC_EIG_I**
+# match that composite to <=2% and MC_EIG_TRQ_MAX reproduces the allocator's own
+# normalization exactly (derive_px4_params.py).
+#
+# Rank 3 chosen over rank 1 (wn=47.7) and rank 2 (wn=16.3) on delay margin, and it also
+# has the best GA score of the three (0.1071 vs 0.1257 / 0.1358):
+#     rank   wn      b     |wn-ib|   wn*tau@12ms   |wn-ib|*tau@24ms
+#        1  47.713  16.606   50.52       32.8 deg          69.5 deg
+#        2  16.336  13.149   20.97       11.2 deg          28.8 deg
+#        3   6.807   0.309    6.81        4.7 deg           9.4 deg
+#
+# Both reasons this entry was previously rejected are void:
+#  - "b=0.309 is 5% of the coning mode it must cancel" - b CANNOT cancel anything. It is
+#    the imaginary part of a complex first-order eigenvalue, so it rotates the rate error
+#    without changing the decay rate, which is wn regardless of b.
+#  - "rank3 was tried first and crashed" - that flight was SYS_AUTOSTART=4001, a Gazebo
+#    x500 with CA_ROTOR*_CT=6.5 and EKF2 at 100 Hz. It says nothing about this vehicle.
+# RANK 3 FLOWN 2026-08-10 AT mm=2.7e-7 AND IT FAILED: airborne 12.9 s, coning growing
+# +0.51/s from t+2.5, torque railed by t+12. The estimate was 0.03-0.13 deg accurate right
+# through the onset (EKF2_PREDICT_US 4000 is fine at 13.3 rad/s), so this was a genuine
+# control instability.
+#
+# Cause: rank 3's cascade separation is wn/ATT_P = 6.81/4.68 = 1.45. The rate and attitude
+# loops sit at nearly the same bandwidth and interact. That objection is independent of
+# both the "b cancels coning" argument (void - b cannot damp) and the old rank3 crash
+# evidence (void - x500), and it was the one that mattered.
+#
+#   rank 1  wn=47.713  ATT_P=4.68  separation 10.20   wn*tau@12ms 32.8 deg  (delay-limited)
+#   rank 2  wn=16.336  ATT_P=4.68  separation  3.49   wn*tau@12ms 11.2 deg  <- this
+#   rank 3  wn= 6.807  ATT_P=4.68  separation  1.45   loops interact
+param set-default MC_EIG_ATT_P 4.68
+param set-default MC_EIG_WN 16.34
+param set-default MC_EIG_B 13.15
 
 # Cut from the GA's 1.0 because at 1.0 this term self-excites. It is a finite
 # difference of the angle error (EigenController::angleToRateSetpoint), so its
@@ -337,7 +377,14 @@ param set-default MC_EIG_B 0.0
 # 0.0 is the clean isolation test if the mode persists - MC_EIG_WN is the primary
 # rate damping and this is explicitly "a second damping path stacked on" it, so
 # zero is a valid configuration, just a less damped one.
-param set-default MC_EIG_ATT_D 0.025
+# The GA front puts Kd_att = 1.0 on ALL THREE entries and at both motor moments, i.e.
+# 40x what was here. Not adopted wholesale: FINDINGS section 8 measured this term
+# self-exciting (D path 8.4x/9.4x the P path, ~39 rad/s), and although that flight was an
+# x500 with a broken estimator, the delay argument against a lead term is independent of
+# it. ATT_D applies LIVE, so walk it up in one flight - 0.1 -> 0.3 -> 1.0 - watching the
+# D/P ratio in flight_health.py. Above ~1 with a material D term is the self-excitation
+# signature; if it never appears, take the GA value.
+param set-default MC_EIG_ATT_D 0.1
 
 # Assumed aerodynamic damping the linearization cancels, so it ADDS energy and
 # overestimating it destabilizes. Left at the prototype values - the GA never
