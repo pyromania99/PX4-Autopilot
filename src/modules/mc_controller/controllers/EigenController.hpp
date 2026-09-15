@@ -70,7 +70,11 @@
 
 #pragma once
 
+#include "Seat.hpp"
+#include "PoleAdapter.hpp"
+
 #include <MulticopterControllerBase.hpp>
+#include <TrajectoryStage.hpp>
 
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 
@@ -88,16 +92,11 @@ public:
 	bool update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 		    float dt, mc_ctrl::ControllerOutput &output) override;
 
-	/**
-	 * Single work queue, same reasoning as CascadedPdController: the whole law is a few
-	 * dozen flops, so paying for the cross-queue state-partitioning contract buys
-	 * nothing. The position stage still runs at position rate because update() gates it
-	 * on state.freshness.position_new, and the angle-error derivative runs at attitude
-	 * rate because it gates on state.freshness.attitude_new.
-	 */
-	bool hasOuterStage() const override { return false; }
 
 	void fillLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const override;
+
+	/// Freezes the seat's adaptation while the mixer is clipping roll or pitch.
+	void setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &feedback) override;
 
 	void fillStatus(mc_controller_status_s &status) const override;
 
@@ -105,9 +104,15 @@ protected:
 	void updateParams() override;
 
 private:
-	/// Stages 1+2: position/velocity PD -> desired acceleration -> roll/pitch setpoint
-	/// and collective. Writes _roll_setpoint, _pitch_setpoint and _thrust_setpoint.
-	void stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
+	/// Stages 1+2-magnitude: position/velocity PD -> desired NED acceleration and collective.
+	/// Writes _acceleration_setpoint and _thrust_setpoint. Stops short of the tilt setpoint
+	/// on purpose - see _acceleration_setpoint.
+	void stepTrajectoryToAcceleration(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
+
+	/// Stage 2, direction: the cached NED acceleration resolved against the CURRENT heading
+	/// into a small-angle roll/pitch pair. Writes _roll_setpoint, _pitch_setpoint and
+	/// _attitude_setpoint.
+	void resolveAccelerationToTilt(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
 
 	/// Angle PD: roll/pitch setpoint -> desired body rates. The derivative is a finite
 	/// difference of the angle ERROR, refreshed only on a new attitude sample.
@@ -121,9 +126,46 @@ private:
 	float _roll_setpoint{0.f};
 	float _pitch_setpoint{0.f};
 	matrix::Quatf _attitude_setpoint{};
+
+	/**
+	 * Desired NED acceleration [m/s^2], the heading-INDEPENDENT half of the tilt setpoint.
+	 *
+	 * The split exists so the two halves can run at their own rates. This vector is a
+	 * function of the position estimate, so it is refreshed at position rate and held in
+	 * between - correctly, since nothing about it has changed. Resolving it into roll and
+	 * pitch requires the heading, which comes from the attitude estimate and arrives at
+	 * gyro rate, so that resolution runs on EVERY cycle in update(). Holding the heading as
+	 * well would leave the roll/pitch pair expressed in a frame the vehicle has rotated out
+	 * of by r*dt_position, which the angle PD reads as a tilt error.
+	 * See TrajectoryStage::currentHeading().
+	 */
+	matrix::Vector3f _acceleration_setpoint{};
+
 	matrix::Vector3f _thrust_setpoint{};
 	matrix::Vector3f _rate_setpoint{};
-	matrix::Vector3f _torque{};		///< [N m], before MC_EIG_TRQ_MAX
+	matrix::Vector3f _torque{};		///< [N m], before MC_EIG_TRQ_MAX and before the seat
+
+	/**
+	 * Command-frame rotation of the roll/pitch torque, MC_SEAT_*. Off by default.
+	 *
+	 * Lives here rather than at the framework output stage because its observable needs
+	 * THIS law's commanded angular acceleration and THIS law's assumed plant drift - the
+	 * same A_r block eigenTorque() cancels. Nothing outside the controller has either.
+	 * It is also where the level-1 twin sits, which is what makes level 2 minus level 1
+	 * a measurement of PX4's cost rather than of two different laws.
+	 */
+	Seat _seat;
+
+	/**
+	 * Adaptive pole ANGLE (MC_POLE_*). Independent of the seat and off by default.
+	 *
+	 * Reads the same achieved-acceleration vector the seat's observable builds, but asks
+	 * a different question of it: the seat asks "did the wrench arrive pointing where it
+	 * was sent", this asks "is the acceleration the DESIGN asks for the one being
+	 * achieved". It applies no rotation - theta_b takes effect through M_dyn on the next
+	 * tick, by offsetting the pole angle the eigen block is built from.
+	 */
+	PoleAdapter _pole;
 
 	// Angle-error derivative state. Held between attitude samples rather than
 	// recomputed at gyro rate, where the difference would be quantization noise.
@@ -133,15 +175,28 @@ private:
 	float _pitch_error_rate{0.f};
 	bool _first_attitude_update{true};
 
-	/// Telemetry only, for vehicle_local_position_setpoint.
-	matrix::Vector3f _position_setpoint{NAN, NAN, NAN};
-	matrix::Vector3f _velocity_setpoint{NAN, NAN, NAN};
-	matrix::Vector3f _acceleration_setpoint{NAN, NAN, NAN};
+	// Seat diagnostics, published through McControllerStatus::debug[5..7]. Kept here
+	// rather than in Seat because xd and xa are built at the call site.
+	float _wn_eff{0.f};		///< [rad/s] MC_EIG_WN rotated by the pole offset
+	float _b_eff{0.f};		///< [rad/s] MC_EIG_B  rotated by the pole offset
+	float _seat_saturated{0.f};
+	float _seat_xd_norm{0.f};
+	float _seat_xa_norm{0.f};
 
 	/// Last roll/pitch angle error, for mc_controller_status.debug[].
 	matrix::Vector2f _attitude_error{};
 
-	bool _position_stage_valid{false};
+	/**
+	 * Stages 1 and 2-magnitude, shared with the other laws in this module: the per-axis
+	 * PD, the position integrator, the lateral clamp and the collective. Opting in is
+	 * composition - holding one of these and delegating - so opting out would mean simply
+	 * not having it, as TemplateController does.
+	 *
+	 * A ModuleParams child, so its own gains refresh through the same cascade this
+	 * controller does. It runs inline in update() on the rate_ctrl queue, gated on
+	 * state.freshness.position_new so it keeps position rate rather than gyro rate.
+	 */
+	TrajectoryStage _trajectory_stage;
 
 	// Cached parameters, so update() never touches the parameter system.
 	matrix::Vector3f _pos_p{};	///< [1/s^2] (MC_EIG_XY_P, MC_EIG_XY_P, MC_EIG_Z_P)

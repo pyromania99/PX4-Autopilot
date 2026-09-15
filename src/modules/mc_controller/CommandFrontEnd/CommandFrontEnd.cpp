@@ -81,8 +81,6 @@ void CommandFrontEnd::reset()
 	_last_valid_setpoint = emptyTrajectorySetpoint();
 	_time_position_control_enabled = 0;
 	_position_control_was_enabled = false;
-	_time_outer_stage_enabled = 0;
-	_outer_stage_stale = false;
 	_tilt_limit_slew_rate.setForcedValue(math::radians(_param_mpc_tiltmax_lnd.get()));
 }
 
@@ -380,56 +378,9 @@ const mc_ctrl::ControllerCommand &CommandFrontEnd::update(const mc_ctrl::Control
 		_stick_to_attitude.reset(state.q, state.unaided_heading);
 	}
 
-	// Latch when the outer stage took over, so its first setpoint gets a grace window
-	// instead of being judged stale before it has ever been published.
-	if (!_outer_stage_active || (level != mc_ctrl::ControlLevel::Trajectory)) {
-		_time_outer_stage_enabled = 0;
-		_outer_stage_stale = false;
-
-	} else if (_time_outer_stage_enabled == 0) {
-		_time_outer_stage_enabled = now;
-	}
-
 	switch (level) {
 	case mc_ctrl::ControlLevel::Trajectory:
-		if (_outer_stage_active) {
-			// A separate outer-loop work item ran the trajectory front end and the
-			// controller's outer stage at position rate. Its result arrives here as
-			// the published attitude setpoint, exactly as mc_att_control receives
-			// mc_pos_control's output in stock PX4.
-			_command.attitude_sp = Quatf(_external_attitude_setpoint.q_d);
-			_command.yaw_sp_move_rate = _external_attitude_setpoint.yaw_sp_move_rate;
-			_command.thrust_body_sp = Vector3f(_external_attitude_setpoint.thrust_body);
-			_command.outer_stage_complete = true;
-
-			// The outer item publishes nothing when its stage fails, so a setpoint that
-			// stops arriving is the only symptom. Nothing downstream can see it: the
-			// inner controller keeps producing a perfectly valid output from the held
-			// setpoint, so neither the NaN guard nor the output watchdog ever trips and
-			// the vehicle would fly the last good attitude indefinitely.
-			const uint64_t newest = math::max(_external_attitude_setpoint.timestamp, _time_outer_stage_enabled);
-			_outer_stage_stale = (now > newest + kOuterStageTimeoutUs);
-
-			if (!_command.attitude_sp.isAllFinite() || (fabsf(_command.attitude_sp.norm()) < FLT_EPSILON)) {
-				_command.attitude_sp = state.q;
-			}
-
-			_command.attitude_sp.normalize();
-
-			for (int i = 0; i < 3; i++) {
-				if (!PX4_ISFINITE(_command.thrust_body_sp(i))) {
-					_command.thrust_body_sp(i) = 0.f;
-				}
-			}
-
-			if (!PX4_ISFINITE(_command.yaw_sp_move_rate)) {
-				_command.yaw_sp_move_rate = 0.f;
-			}
-
-		} else {
-			buildTrajectoryCommand(state, now);
-		}
-
+		buildTrajectoryCommand(state, now);
 		break;
 
 	case mc_ctrl::ControlLevel::Attitude:

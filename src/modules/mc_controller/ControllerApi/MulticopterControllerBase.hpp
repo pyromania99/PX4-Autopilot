@@ -85,30 +85,11 @@ public:
 	}
 
 	/**
-	 * Zero the INNER stage's integrators, filters and internal state.
+	 * Zero every integrator, filter and piece of internal state.
 	 * Called on the `rate_ctrl` work queue when this controller is selected, on every
 	 * arm transition, and on every ControlLevel change.
-	 *
-	 * Controllers with hasOuterStage() == true must NOT touch outer-stage state here;
-	 * that is what resetOuter() is for. Doing so is a cross-queue data race.
 	 */
 	virtual void reset() = 0;
-
-	/**
-	 * Zero the OUTER stage's state. Called on the `nav_and_controllers` work queue,
-	 * on the same occasions as reset(), and only when hasOuterStage() is true.
-	 */
-	virtual void resetOuter() {}
-
-	/**
-	 * Push refreshed parameter values into the outer stage.
-	 *
-	 * updateParams() runs on the `rate_ctrl` queue via the ModuleParams cascade, so a
-	 * controller with an outer stage must not write outer-stage objects from there.
-	 * Cache the values in updateParams() and apply them here instead; the framework
-	 * calls this on the `nav_and_controllers` queue before every updateOuter().
-	 */
-	virtual void updateOuterParams() {}
 
 	/**
 	 * Run the control law.
@@ -127,52 +108,7 @@ public:
 			    mc_ctrl::ControllerOutput &output) = 0;
 
 	/**
-	 * Can this control law be split into an outer (trajectory -> attitude) stage
-	 * that runs on the lower-priority work queue, and an inner stage at gyro rate?
-	 *
-	 * Returning true reproduces stock PX4's work-queue separation: the heavy
-	 * position mathematics runs on `nav_and_controllers` at position rate and hands
-	 * the attitude setpoint down over uORB, keeping the `rate_ctrl` queue free for
-	 * the inner loop. It also reintroduces stock's one-cycle latency between the
-	 * two, which is what makes an A/B against stock exact.
-	 *
-	 * Returning false (the default) is correct for a MONOLITHIC full-stack law that
-	 * goes from a position command straight to motor moments and cannot be cut in
-	 * two. Such a controller runs entirely at gyro rate; the framework still moves
-	 * its own setpoint plumbing off the real-time queue.
-	 *
-	 * CROSS-THREAD CONTRACT for controllers that return true: updateOuter() and
-	 * update() run concurrently on different work queues. They MUST touch disjoint
-	 * member state. Anything the inner stage needs from the outer stage travels
-	 * through the published vehicle_attitude_setpoint and arrives back as
-	 * command.attitude_sp / thrust_body_sp / yaw_sp_move_rate, exactly as it does
-	 * between stock's mc_pos_control and mc_att_control. If your controller cannot
-	 * honour that, return false.
-	 *
-	 * The contract covers the housekeeping entry points too, which is easy to miss:
-	 *   rate_ctrl queue          : update(), reset(), setAllocatorFeedback(), updateParams()
-	 *   nav_and_controllers queue: updateOuter(), resetOuter(), updateOuterParams(),
-	 *                              fillLocalPositionSetpoint()
-	 * Resetting an outer-stage integrator from reset(), or writing an outer-stage gain
-	 * from updateParams(), races just as surely as touching it from update() does.
-	 */
-	virtual bool hasOuterStage() const { return false; }
-
-	/**
-	 * Outer stage: trajectory command -> attitude setpoint.
-	 *
-	 * Called on the `nav_and_controllers` work queue at position rate, only when
-	 * hasOuterStage() is true and the level is Trajectory. Fill @p attitude_setpoint
-	 * (q_d, thrust_body, yaw_sp_move_rate); the framework publishes it.
-	 *
-	 * @param dt time since the previous outer-stage call (position rate, not gyro rate)
-	 * @return false to indicate no valid attitude setpoint could be produced
-	 */
-	virtual bool updateOuter(const mc_ctrl::ControllerState &, const mc_ctrl::ControllerCommand &,
-				 float, vehicle_attitude_setpoint_s &) { return false; }
-
-	/**
-	 * Optional: expose the outer stage's internal position setpoint for publication.
+	 * Optional: expose the trajectory stage's internal position setpoint for publication.
 	 *
 	 * vehicle_local_position_setpoint is consumed by the flight tasks for smooth
 	 * setpoint resets and by the POSITION_TARGET_LOCAL_NED mavlink stream. A

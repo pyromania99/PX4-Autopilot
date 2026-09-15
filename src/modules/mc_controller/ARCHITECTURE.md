@@ -199,43 +199,23 @@ local_position / attitude / angular_velocity / hover_thrust ─────┤
        control_allocator ───────────────────► MixingOutput ──► ESCs
 ```
 
-Since Stage 12 there is a **second, optional work item**. Stock PX4 spreads the
-cascade over two work queues — `mc_pos_control` on `nav_and_controllers` at
-~125 Hz, `mc_rate_control` on the high-priority `rate_ctrl` queue at gyro rate —
-so that heavy trajectory math never delays the inner loop. Running everything on
-`rate_ctrl`, as the design originally did, put `PositionControl` on the fast
-queue. `OuterLoop` restores the separation:
+Everything runs on the **`rate_ctrl`** work item. Stock PX4 spreads the cascade over
+two work queues — `mc_pos_control` on `nav_and_controllers` at ~125 Hz,
+`mc_rate_control` on `rate_ctrl` at gyro rate — so heavy trajectory math never delays
+the inner loop. The same stage-rate separation is reproduced here by **freshness
+gating** rather than by splitting queues: `update()` is entered at gyro rate, but each
+stage only does work when its own input is new (`freshness.position_new`,
+`freshness.attitude_new`). Measured 3585 position-stage runs against 7171 cycles in
+SITL, and the ratio follows the hardware rates with no code change.
 
-```
-        ┌────────────────────────────────────────────────────────────┐
-        │ OuterLoop      WorkItem, "nav_and_controllers" WQ,         │
-        │                driven by vehicle_local_position (~125 Hz)  │
-        │   its OWN VehicleStateProvider + CommandFrontEnd           │
-        │   controller->updateOuter()  ──► vehicle_attitude_setpoint │
-        └────────────────────────────────────────────────────────────┘
-                      │ vehicle_attitude_setpoint  (uORB)
-                      ▼
-        ┌────────────────────────────────────────────────────────────┐
-        │ MulticopterController   "rate_ctrl" WQ, gyro rate          │
-        │   sees command.outer_stage_complete == true and skips its   │
-        │   own trajectory stage                                     │
-        └────────────────────────────────────────────────────────────┘
-```
-
-This is **opt-in per controller**, and that is a requirement rather than a
-convenience. The framework's scope is full-stack monolithic control laws — an INDI
-or SE(3) controller whose position, attitude and rate stages share internal state
-cannot be cut across two threads. Such a controller leaves `hasOuterStage()`
-false, `OuterLoop` returns immediately every cycle, and the whole law runs at gyro
-rate exactly as before.
-
-The two items own **separate** `VehicleStateProvider` and `CommandFrontEnd`
-instances. Sharing either would be a data race across work queues. The only
-object they share is the controller itself, whose two entry points are
-contractually required to touch disjoint members — everything that must cross
-between them travels through the published `vehicle_attitude_setpoint`. There is
-no mutex, deliberately: a lock on the gyro path costs more than the latency it
-removes.
+Stage 12 added an optional second work item, `OuterLoop`, which moved the trajectory
+stage to `nav_and_controllers` behind a `hasOuterStage()` opt-in, with a cross-thread
+disjoint-state contract and a retire-then-free handshake for controller swaps. No
+shipped law ever opted in — it woke at position rate purely to return immediately — so
+it was removed, along with `hasOuterStage()`, `updateOuter()`, `resetOuter()`,
+`updateOuterParams()` and `ControllerCommand::outer_stage_complete`. Reintroducing the
+split is possible if a law ever has an outer stage genuinely too expensive for the gyro
+path; freshness gating is the cheap answer and should be tried first.
 
 ### 3.2 The central idea: an explicit control level
 
@@ -560,6 +540,9 @@ must not warn about it.
 | `src/modules/mc_controller/CommandFrontEnd/ControlLevelResolverTest.cpp` | nav_state truth table vs commander's own table |
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEnd.{hpp,cpp}` | setpoint sourcing, takeoff ramp, failsafe, limits |
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEndTest.cpp` | setpoint-sourcing semantics |
+| `src/modules/mc_controller/TrajectoryStage/TrajectoryStage.{hpp,cpp}` | shared, opt-in trajectory stage: per-axis PD, position integrator, lateral clamp, collective |
+| `src/modules/mc_controller/TrajectoryStage/trajectory_stage_params.c` | `MC_OL_*` integrator gains (both ship at 0) |
+| `src/modules/mc_controller/TrajectoryStage/TrajectoryStageTest.cpp` | integrator, hover-thrust continuity, collective derivation |
 | `src/modules/mc_controller/controllers/CascadedPdController.{hpp,cpp}` | cascaded PD, geometric attitude law, no yaw control |
 | `src/modules/mc_controller/controllers/CascadedPdControllerTest.cpp` | property tests for the PD law |
 | `src/modules/mc_controller/controllers/cascaded_pd_params.c` | `MC_PD_*` parameters |
@@ -567,7 +550,6 @@ must not warn about it.
 | `src/modules/mc_controller/controllers/template_controller_params.c` | `MC_TPL_*` parameters |
 | `src/modules/mc_controller/controllers/ControllerRegistry.{hpp,cpp}` | `MC_CTRL_ALG` → controller |
 | `src/modules/mc_controller/MulticopterController.{hpp,cpp}` | the module + inner work item: uORB wiring, gyro-rate pipeline, output stage |
-| `src/modules/mc_controller/OuterLoop.{hpp,cpp}` | optional trajectory work item on `nav_and_controllers` (Stage 12); active only when the controller reports `hasOuterStage()` |
 | `src/modules/mc_controller/module.yaml` | `MC_CTRL_ALG`, `MC_CTRL_WD_MS` |
 | `src/modules/mc_controller/Kconfig` | build option |
 | `src/modules/mc_controller/CMakeLists.txt` (+ 4 sub-directory CMakeLists) | build |
@@ -1107,9 +1089,10 @@ budget on an H7 at `IMU_GYRO_RATEMAX=400`.
 
 The constraint was that a **monolithic** full-stack law — the framework's whole
 purpose — cannot be split across two threads. So the separation is opt-in through
-three additive virtuals that default to today's behaviour, `hasOuterStage()`
-foremost. False → `OuterLoop::Run()` returns immediately and the entire law runs at
-gyro rate, unchanged.
+three additive virtuals that defaulted to today's behaviour, `hasOuterStage()`
+foremost. False → `OuterLoop::Run()` returned immediately and the entire law ran at
+gyro rate, unchanged. No law ever set it true, and the whole path was later removed;
+stage-rate parity comes from freshness gating instead.
 
 Result:
 
@@ -1259,7 +1242,6 @@ Plus SITL gates, which are scripted rather than in CI:
 | **`MC_CTRL_ALG=0` boot assertion** | parameter had been left at 2 in that run | boot with the default and check `mc_controller` is absent |
 | **VTOL** | out of scope; the module refuses to start on a VTOL airframe | — |
 | **Inner-loop cycle time** | **not measurable in SITL** — every `PC_ELAPSED` counter reports `0us elapsed`, for the stock modules too | hardware only: `perf` → `mc_controller: cycle` against the 2.5 ms budget at `IMU_GYRO_RATEMAX=400` |
-| **The outer/inner disjoint-state contract** | enforced by review, not the compiler | audit any controller that sets `hasOuterStage()`; no shipped controller does today |
 | **`rate sp pitch` / `rate sp yaw`** | flagged by the Stage 12 A/B, but marginal — the between-group max sits inside stock's own spread (16.6 vs 15.5); only the means differ | more flights, or accept as noise |
 
 ### Behavioural differences from stock that are real, not bugs
@@ -1299,7 +1281,9 @@ Five steps, detailed in [`README.md`](README.md):
 
 1. copy `controllers/TemplateController.{hpp,cpp}`, rename the class
 2. add `controllers/my_controller_params.c` with `MC_MY_*` parameters
-3. add both files to `SRCS` in `controllers/CMakeLists.txt`
+3. add ONLY `MyController.cpp/.hpp` to `SRCS` in `controllers/CMakeLists.txt` -
+   never the `_params.c`, which `src/lib/parameters` generates from a directory
+   scan and which is a redefinition error if compiled in as well
 4. add an `Algorithm` enumerator and one `case` in `ControllerRegistry`
 5. add the value to `MC_CTRL_ALG` in `module.yaml`
 
@@ -1309,8 +1293,8 @@ Five steps, detailed in [`README.md`](README.md):
 - always fill `output.thrust`, not just `output.torque`
 - `update()` is real-time: no allocation, no blocking, no `printf`
 - declare every level you handle in `supportedLevels()`
-- leave `hasOuterStage()` false unless your law genuinely separates — if you do opt
-  in, `updateOuter()` and `update()` run concurrently on different work queues and
+- gate each stage on `state.freshness.*_new` so it keeps its own cadence; the whole
+  law runs on `rate_ctrl` and nothing else
   must touch disjoint members
 
 ### Re-check after any change

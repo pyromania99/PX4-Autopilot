@@ -35,6 +35,12 @@ sed -i 's/TemplateController/MyController/g; s/"template"/"mine"/' MyController.
 
 `-Wswitch` will fail the build if you add the enumerator and forget the case.
 
+If your law has a conventional position loop, you can skip writing one: hold a
+`TrajectoryStage` and delegate the setpoint→acceleration and collective stages to it,
+as both shipped laws do. It also carries the only integrator in this module
+(`MC_OL_XY_I` / `MC_OL_Z_I`, both shipping at 0). Opting out is simply not holding
+one. See [README.md](README.md#sharing-the-trajectory-stage).
+
 ### Where your math goes
 
 One function: `MyController::update()`. It is handed the state and the command
@@ -71,8 +77,9 @@ bool MyController::update(const ControllerState &state,
 
 **If your law is monolithic** — position through rates in one pass, sharing state —
 delete the `switch` entirely and branch only on `command.level` to decide which
-setpoint to read. Leave `hasOuterStage()` false and the whole law runs at gyro
-rate on one thread. This is the default and the case to build first.
+setpoint to read. The whole law runs at gyro rate on one thread; gate the expensive
+stages on `state.freshness.*_new` so each keeps its own cadence. This is the default
+and the case to build first.
 
 Inputs available on `state`: `q`, `angular_velocity`, `angular_accel`, `position`,
 `velocity`, `acceleration`, `heading`, `hover_thrust`, the `*_valid_*` flags,
@@ -246,9 +253,9 @@ perf                     # mc_controller: cycle  <- the number that matters
 ```
 
 Budget: at `IMU_GYRO_RATEMAX=400` (the hardware default; SITL uses 250) the inner
-loop has **2.5 ms**. If your law does not fit, either optimise it or split it —
-see `hasOuterStage()` in [README.md](README.md), which moves the trajectory stage
-to the slower queue.
+loop has **2.5 ms**. If your law does not fit, gate its expensive stages on
+`state.freshness.*_new` so they run at position or attitude rate instead of gyro
+rate — see [One work queue](README.md#one-work-queue).
 
 Then, props on and tethered: Stabilized hover → Altitude → Position → mission.
 `param set MC_CTRL_ALG 0` + reboot is one step away at every point.

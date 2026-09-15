@@ -61,7 +61,7 @@ param set-default CA_ROTOR1_CT 10.344
 param set-default CA_ROTOR2_CT 10.344
 param set-default CA_ROTOR3_CT 10.344
 
-param set-default MC_CTRL_ALG 3
+param set-default MC_CTRL_ALG 1
 
 # Cascaded PD gains ported from the Isaac Sim prototype
 # (PegasusSimulator/examples/utils/cascaded_pd_controller.py). The shipped
@@ -137,6 +137,40 @@ param set-default IMU_GYRO_RATEMAX 800
 # EKF step at 7.9 rad/s. At 250 Hz it is 1.8 deg. This is the parameter the three
 # clean flights have in common, and the only one of the three below that is not
 # reboot_required - i.e. the only one that provably took effect when set live.
+# ── 2026-08-16: 4000 -> 1786 us (560 Hz), with IMU_INTEG_RATE raised to match ──
+# 4000 us = 250 Hz was EXACTLY the IMU rate, so that knob was fully spent - the filter
+# cannot step finer than its input. Rotation per filter step is what actually failed:
+#
+#     100 Hz @  7.9 rad/s  ->  4.53 deg/step   diverged  (the original bug)
+#     250 Hz @  7.9 rad/s  ->  1.81 deg/step   flew 163 s
+#     250 Hz @ 13.2 rad/s  ->  3.03 deg/step   DIVERGED, inverted at t+15 s
+#     250 Hz @ 25.0 rad/s  ->  5.73 deg/step   worse than the original bug
+#     560 Hz @ 13.2 rad/s  ->  1.35 deg/step
+#     560 Hz @ 25.0 rad/s  ->  2.56 deg/step   still under today's failing 3.03
+#
+# So this is the SAME failure as 2026-08-08, re-entered from the spin side rather than the
+# filter side. 560 Hz is 70% of the Kakute H7's real IMU rate: its ICM-42688-P runs an
+# 8 kHz internal ODR but transfers its FIFO every 1250 us = 800 Hz, which is what reaches
+# EKF2 (and what IMU_GYRO_RATEMAX 800 below already assumes).
+#
+# ALL THREE rates must move together or the slowest one caps the chain:
+#   Pegasus --physics-rate 560  ->  HIL_SENSOR at 560 Hz
+#   IMU_INTEG_RATE 560          ->  VehicleIMU delta-angles at 560 Hz
+#   EKF2_PREDICT_US 1786        ->  the filter actually steps at 560 Hz
+# Raising only the physics rate leaves IMU_INTEG_RATE integrating back down to 250.
+#
+# `param set`, NOT `param set-default`. px4-rc.simulator:5 does
+# `param set-default IMU_INTEG_RATE 250` ("Simulator IMU data provided at 250 Hz") and it
+# runs AFTER the airframe is sourced at rcS:224, so a set-default here is overwritten. An
+# explicitly SET parameter is not overridden by a later set-default, so this survives.
+#
+# This is also why single_vehicle.py:189-210 concluded "PX4 emits HIL_ACTUATOR_CONTROLS at
+# 250 Hz no matter how fast HIL_SENSOR arrives". That was never a PX4 protocol limit - it
+# was this same line pinning IMU_INTEG_RATE to 250, which pins vehicle_angular_velocity,
+# which pins the rate loop, which pins actuator_outputs. Feeding 560 Hz of HIL_SENSOR into
+# a 250 Hz reply rate starves the lockstep: measured 2026-08-16, actuator_outputs collapsed
+# to 10 Hz and 3.7 s of sim time took ~90 s of wall clock. Raise all three or none.
+# param set IMU_INTEG_RATE 560   # see the 560 Hz note above - REVERTED
 param set-default EKF2_PREDICT_US 4000
 
 # Set together with the above on the two longest clean flights. Both are carried here
@@ -148,7 +182,40 @@ param set-default EKF2_PREDICT_US 4000
 # 100 ms still spans 79 deg of rotation at 7.9 rad/s. The largest delay that actually
 # applies to this vehicle is GPS; ASP (100 ms) is airspeed and OF (20 ms) is optical
 # flow, neither of which exists here. There is likely room to go lower.
+# 2026-08-16: 100.0 -> 40.0 ms. estimator_interface.cpp:546 sizes the IMU buffer as
+#   _imu_buffer_length = ceil(EKF2_DELAY_MAX / filter_update_period_ms)
+# so raising the filter to 560 Hz took this from 25 entries to 56, and the output predictor
+# has to propagate the state forward across every one of them. At 560 Hz the estimate
+# diverged +-12 m of altitude with the vehicle STATIONARY on the ground, which is a filter
+# failure rather than a spin failure. 40 ms still covers every delay that actually applies
+# here - EKF2_GPS_DELAY is 30 ms and nothing else exceeds it.
 param set-default EKF2_DELAY_MAX 100.0
+
+# ── 2026-08-16: magnetometer fusion OFF (5 = none) ───────────────────────────
+# TEST, not a settled value. This vehicle sustains 13+ rad/s of yaw, and the heading
+# source is the obvious suspect for two separate estimator failures:
+#   - the 13.2 rad/s divergence: identical gains hold 84 s on MC_CTRL_GT=1 and invert at
+#     t+15 s on the estimate, so the state path is what fails, not the control law
+#   - "Preflight Fail: heading estimate not stable" at 560 Hz, which blocked arming
+# A magnetometer on a body spinning at 2.1 Hz is being asked to track a field rotating
+# through its full range twice a second, and mag fusion fighting the gyro would present as
+# exactly this. With all four rotors the same direction there is no differential yaw
+# authority anyway, so heading is not controlled - only estimated.
+#
+# TESTED 2026-08-16 - THE MAGNETOMETER IS EXONERATED. 0 (auto) and 6 (init-only) both
+# fly ~5-10 s and then invert at 13.2 rad/s; 5 (none) cannot arm at all. The failure is
+# indifferent to how the mag is fused, so it is not mag fusion.
+#
+# Value 5 (None) specifically is REFUTED - with no other yaw source configured the
+# heading becomes unobservable and preflight fails outright ("heading estimate not
+# stable", arming denied), which is worse than the mag-on baseline that at least armed
+# and flew 15 s. Now testing 6 (Init): the mag sets the INITIAL heading so preflight
+# passes, then stops being fused once the vehicle is spinning and the field it sees is
+# sweeping its full range twice a second. Value 1 (Magnetic heading) is the fallback -
+# heading-only fusion, avoiding the 3D field/bias estimation that the docs say needs
+# "a stable earth field".
+# REFUTED - see note above. Left at the 0 (Automatic) default.
+# param set-default EKF2_MAG_TYPE 6
 param set-default EKF2_GPS_DELAY 30.0
 
 # Corrected 2026-08-08 by examples/px4_tuning/derive_px4_params.py, which reads the mass
@@ -358,9 +425,33 @@ param set-default MC_EIG_Z_D 4.94
 #   rank 1  wn=47.713  ATT_P=4.68  separation 10.20   wn*tau@12ms 32.8 deg  (delay-limited)
 #   rank 2  wn=16.336  ATT_P=4.68  separation  3.49   wn*tau@12ms 11.2 deg  <- this
 #   rank 3  wn= 6.807  ATT_P=4.68  separation  1.45   loops interact
-param set-default MC_EIG_ATT_P 4.68
-param set-default MC_EIG_WN 16.34
-param set-default MC_EIG_B 13.15
+# ── 2026-08-16: replaced with the LAGGED GA front, rank 1 ────────────────────
+# The rank1/2/3 table above came from a front searched on a plant with NO actuator or
+# state lag, and it does not survive contact with one. Measured on the identical seed-42
+# initial population evaluated on both plants (results/ga_LAG_20260816 vs
+# ga_NOLAG_control_20260816): median cost 6.72x worse with lag, 12/16 individuals worse,
+# 0/16 better, and the one individual that was genuinely good unlagged went 0.0124 ->
+# 0.1743, i.e. 14.1x, on IDENTICAL gains. Lag does not lower the achievable ceiling - the
+# converged optimum is the same 0.0093 either way - it shrinks the basin that reaches it.
+# So gains carried over from a lag-free search are drawn from the wrong basin, which is
+# the most likely reason nothing here has ever flown as well as Pegasus did.
+#
+# These come from results/ga_LAG_20260816/mm_2.7e-07 (rotor_tau 20 ms, att/pos delay 8 ms,
+# torque_max 3.843, mm 2.7e-7 -> r_ss 13.2 rad/s), Pareto rank 1 of 272 evaluations.
+# Separation wn/ATT_P = 8.30, comfortably clear of the >=3 the rank3 crash established.
+#
+# PROVISIONAL. rotor_tau is the 20 ms PLACEHOLDER, not a measured constant - no hardware
+# access as of 2026-08-16 - so treat these as a ranking, not as values, until Stage 0 of
+# examples/px4_tuning/NEXT_STEPS.md runs. Previous values were:
+#   MC_EIG_ATT_P 4.68   MC_EIG_WN 16.34   MC_EIG_B 13.15   MC_EIG_ATT_D 0.1
+param set-default MC_EIG_ATT_P 4.1186
+param set-default MC_EIG_WN 34.1837
+# b = 0. The lagged front puts it at 0.000 on its rank-1 entry, and stratifying the
+# archive at fixed low Kd shows b has no measurable effect over 0-5 (r = +0.030) - the
+# raw r = +0.775 was a confound with Kd (corr 0.493). No individual in either run combines
+# low Kd with b > 5, so the old 13.15 was never tested here; the case against it remains
+# the theory one (|wn - i*b| = sqrt(wn^2 + b^2) only spends margin).
+param set-default MC_EIG_B 0.0
 
 # Cut from the GA's 1.0 because at 1.0 this term self-excites. It is a finite
 # difference of the angle error (EigenController::angleToRateSetpoint), so its
@@ -384,7 +475,18 @@ param set-default MC_EIG_B 13.15
 # it. ATT_D applies LIVE, so walk it up in one flight - 0.1 -> 0.3 -> 1.0 - watching the
 # D/P ratio in flight_health.py. Above ~1 with a material D term is the self-excitation
 # signature; if it never appears, take the GA value.
-param set-default MC_EIG_ATT_D 0.1
+# 2026-08-16: 0.1 -> 0.05, the lagged GA's own value. The concern above was about Kd=1.0,
+# and the lagged search agrees emphatically: Kd_att is the DOMINANT gene (r = +0.840 vs
+# wn's +0.069, which is invisible), and best-score-by-bin is monotone across 300x -
+# [0,0.25) best 0.0093, [0.25,1) 0.0442, [1,3) 0.0308, [3,10) 0.4967, [10,31) 2.8007.
+# Every single point on the lagged Pareto front sits at exactly 0.050.
+#
+# Note the search is PRESSING THE GENE FLOOR (0.05), so the true optimum may be lower;
+# the bound has since been widened to (-0.1, 0.1) for the next run. The "walk it up
+# 0.1 -> 0.3 -> 1.0" advice above is now contraindicated for the lagged plant: 0.25-1.0
+# already costs 4.4x with lag while costing almost nothing without it, which is exactly
+# how a lag-free front produces a gain that destroys a lagged vehicle.
+param set-default MC_EIG_ATT_D 0.05
 
 # Assumed aerodynamic damping the linearization cancels, so it ADDS energy and
 # overestimating it destabilizes. Left at the prototype values - the GA never
@@ -403,3 +505,32 @@ param set-default PWM_MAIN_FUNC1 101
 param set-default PWM_MAIN_FUNC2 102
 param set-default PWM_MAIN_FUNC3 103
 param set-default PWM_MAIN_FUNC4 104
+
+# ── Headless operation: no QGC, no RC ────────────────────────────────────────
+#
+# This vehicle is flown by examples/flight/px4_driver.py over MAVLink with nothing
+# acting as a ground station and no stick source of any kind. Both loss failsafes
+# therefore have to be off, or a run ends for reasons that have nothing to do with
+# the control law under test.
+#
+# NAV_DLL_ACT is BOTH the GCS-loss failsafe action AND the arming gate. In
+# rcAndDataLinkCheck.cpp:
+#
+#     bool gcs_connection_required = _param_nav_dll_act.get() > 0;
+#     NavModes affected_modes = gcs_connection_required ? NavModes::All : NavModes::None;
+#
+# so 0 disables the failsafe and simultaneously downgrades "No connection to the
+# ground control station" from an arming FAILURE to an Info message. That is the one
+# parameter that makes QGC unnecessary. It already defaults to 0; it is pinned here
+# so a change to that default cannot silently reintroduce the requirement.
+param set-default NAV_DLL_ACT 0
+
+# Manual-control loss, same enum (failsafe.cpp:fromNavDllOrRclActParam maps 0 to
+# Action::None). This one is NOT already safe: it defaults to 2, Return mode. With no
+# RC and no joystick the signal is "lost" from boot, so an offboard flight can be
+# pulled into RTL partway through. px4_driver.py sets it to 0, but only inside
+# enable_joystick(), which an offboard-only run never calls - so it belongs here.
+#
+# Note the parameter metadata says @min 1 and omits 0. That is a documentation gap:
+# the failsafe state machine has handled 0 as Disabled since the failsafe rewrite.
+param set-default NAV_RCL_ACT 0

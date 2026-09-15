@@ -43,14 +43,11 @@ using namespace matrix;
 /// default of 45 deg.
 static constexpr float kDefaultTiltLimit = M_PI_F / 4.f;
 
-/// Floor on cos(tilt) before it divides the hover collective. The prototype used 1e-3,
-/// which multiplies hover thrust by 1000 and simply pins the output at thrust_max; 0.1
-/// reaches the same saturation with a bounded intermediate, and matches
-/// CascadedPdController.
-static constexpr float kMinCosTilt = 0.1f;
-
 EigenController::EigenController(ModuleParams *parent) :
-	MulticopterControllerBase(parent)
+	MulticopterControllerBase(parent),
+	_seat(this),
+	_pole(this),
+	_trajectory_stage(this)
 {
 	EigenController::updateParams();
 	EigenController::reset();
@@ -81,6 +78,12 @@ void EigenController::updateParams()
 			    math::max(_param_mc_eig_izz.get(), 1e-4f));
 
 	_inv_torque_max = 1.f / math::max(_param_mc_eig_trq_max.get(), 1e-3f);
+
+	// Effective pair, seeded at the nominal. update() rotates it by the adaptive offset
+	// every tick when MC_POLE_EN is set; with the adapter off these stay equal to the
+	// configured (wn, b), so the law is bit-identical to one built without this feature.
+	_wn_eff = _wn;
+	_b_eff = _b;
 }
 
 void EigenController::reset()
@@ -91,6 +94,7 @@ void EigenController::reset()
 	_roll_setpoint = 0.f;
 	_pitch_setpoint = 0.f;
 	_attitude_setpoint = Quatf();
+	_acceleration_setpoint.setZero();
 	_thrust_setpoint.setZero();
 	_rate_setpoint.setZero();
 	_torque.setZero();
@@ -100,65 +104,52 @@ void EigenController::reset()
 	_roll_error_rate = 0.f;
 	_pitch_error_rate = 0.f;
 	_first_attitude_update = true;
+	_pole.reset();
 
-	_position_setpoint = Vector3f(NAN, NAN, NAN);
-	_velocity_setpoint = Vector3f(NAN, NAN, NAN);
-	_acceleration_setpoint = Vector3f(NAN, NAN, NAN);
 	_attitude_error.setZero();
-	_position_stage_valid = false;
+
+	// Drops the shared stage's integrator along with its cached setpoints - reset() is the
+	// full clear, unlike the reset_integrals path in update().
+	_trajectory_stage.reset();
+	// A converged angle must not survive an arm transition or a level change: it
+	// would rotate the very first torque of the next flight by an angle nothing has
+	// measured.
+	_seat.reset();
 }
 
-void EigenController::stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state,
+void EigenController::stepTrajectoryToAcceleration(const mc_ctrl::ControllerState &state,
 		const mc_ctrl::ControllerCommand &command)
 {
-	// Stage 1: PD on position, damped by the filtered EKF velocity rather than by the
-	// prototype's numerical derivative of the position error. Two reasons, the same ones
-	// CascadedPdController gives: the setpoint steps flight_mode_manager emits on every
-	// mode change would otherwise differentiate into a torque spike, and Altitude and
-	// velocity-only modes deliver a velocity_sp with position_sp NaN, which a
-	// position-error-only law cannot serve at all.
+	// Stage 1 and the lateral clamp live in the shared trajectory stage: they were
+	// identical across every law in this module, and that is now where the position
+	// integrator lives too. The gains stay here - MC_EIG_* is this law's own tuning.
 	//
-	// An unset (NaN) axis contributes no error rather than poisoning the sum. There is no
-	// integrator anywhere in this controller: steady wind leaves a steady offset.
-	Vector3f acceleration_sp{};
+	// This function deliberately stops short of the tilt setpoint. Everything it computes is
+	// a function of the position estimate and is therefore only worth recomputing at
+	// position rate; resolving that acceleration against the heading is not, and update()
+	// re-runs resolveAccelerationToTilt() every cycle.
+	_acceleration_setpoint = _trajectory_stage.computeAccelerationSetpoint(state, command, _pos_p, _pos_d);
 
-	for (int i = 0; i < 3; i++) {
-		const bool have_position = PX4_ISFINITE(command.position_sp(i)) && PX4_ISFINITE(state.position(i));
-		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && PX4_ISFINITE(state.velocity(i));
+	// Stage 2, magnitude: shared, and a deliberate behaviour change. This law used to
+	// divide only the hover term by cos(tilt) - a faithful port of the prototype's
+	// base_thrust = m*g/(4*tilt_den), which leaves the altitude correction undivided and so
+	// under-commands thrust in a tilted climb. The shared stage divides the whole demand,
+	// which is the correct derivation. The two agree exactly at level and whenever
+	// acceleration_sp(2) is zero; they diverge by ~2% at 30 deg of bank while climbing.
+	//
+	// It also drops the fabsf()-and-floor on cos(tilt), so there is no longer a capped 10x
+	// collective boost past ~84 deg of tilt or while inverted. See TrajectoryStage.hpp.
+	_thrust_setpoint = _trajectory_stage.computeThrustSetpoint(state, command, _acceleration_setpoint);
+}
 
-		const float position_error = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
+void EigenController::resolveAccelerationToTilt(const mc_ctrl::ControllerState &state,
+		const mc_ctrl::ControllerCommand &command)
+{
+	const Vector3f acceleration_sp = _acceleration_setpoint;
 
-		// With no velocity setpoint the D term damps absolute velocity, which is the
-		// same thing with v_sp == 0.
-		float velocity_error = 0.f;
-
-		if (have_velocity) {
-			velocity_error = command.velocity_sp(i) - state.velocity(i);
-
-		} else if (PX4_ISFINITE(state.velocity(i))) {
-			velocity_error = -state.velocity(i);
-		}
-
-		acceleration_sp(i) = _pos_p(i) * position_error + _pos_d(i) * velocity_error;
-
-		if (PX4_ISFINITE(command.acceleration_sp(i))) {
-			acceleration_sp(i) += command.acceleration_sp(i);
-		}
-	}
-
-	// Bound the lateral demand by what the tilt limit can actually deliver, before it
-	// reaches the angle construction. g*tan(tilt) is the horizontal acceleration a vehicle
-	// at that tilt produces while holding altitude.
+	// Needed again below for the second, angle-domain clamp the small-angle inversion
+	// makes necessary. The stage has already applied the acceleration-domain one.
 	const float tilt_limit = PX4_ISFINITE(command.tilt_limit) ? command.tilt_limit : kDefaultTiltLimit;
-	const float max_lateral_acceleration = CONSTANTS_ONE_G * tanf(math::min(tilt_limit, math::radians(80.f)));
-	const Vector2f lateral_acceleration(acceleration_sp);
-	const float lateral_norm = lateral_acceleration.norm();
-
-	if (lateral_norm > max_lateral_acceleration && lateral_norm > FLT_EPSILON) {
-		const Vector2f limited = lateral_acceleration * (max_lateral_acceleration / lateral_norm);
-		acceleration_sp(0) = limited(0);
-		acceleration_sp(1) = limited(1);
-	}
 
 	// Stage 2, direction. The prototype inverts the small-angle hover relation in ENU/FLU;
 	// re-derived here for NED/FRD, where the third column of R(phi, theta, psi) is
@@ -172,10 +163,18 @@ void EigenController::stepTrajectoryToAttitude(const mc_ctrl::ControllerState &s
 	// east demand gives right-wing-down roll and zero pitch. Both are asserted by test,
 	// because a sign error here is a controller that flies away from its setpoint.
 	//
-	// THE HEADING DECISION, same as MC_CTRL_ALG=1: state.heading, not command.yaw_sp. The
-	// tilt is rebuilt around wherever the vehicle points right now, so a heading error can
-	// never appear and the yaw axis never sees a proportional term.
-	const float heading = PX4_ISFINITE(state.heading) ? state.heading : 0.f;
+	// THE HEADING DECISION, same as MC_CTRL_ALG=1: the vehicle's own heading, not
+	// command.yaw_sp. The tilt is rebuilt around wherever the vehicle points right now, so a
+	// heading error can never appear and the yaw axis never sees a proportional term.
+	//
+	// Taken from state.q via the shared helper, not from state.heading. This resolution is
+	// the whole reason the function runs at gyro rate: the sin/cos pair below IS the
+	// rotation from NED into the heading-aligned frame, so a heading that lags by
+	// r*dt_position rotates the commanded roll/pitch pair by the same angle, and
+	// angleToRateSetpoint() then reads that rotation as a tilt error to correct. In a spin
+	// it is a standing, rate-proportional cross-coupling between the roll and pitch
+	// channels. See TrajectoryStage::currentHeading().
+	const float heading = TrajectoryStage::currentHeading(state);
 	const float sin_heading = sinf(heading);
 	const float cos_heading = cosf(heading);
 
@@ -197,25 +196,6 @@ void EigenController::stepTrajectoryToAttitude(const mc_ctrl::ControllerState &s
 	_roll_setpoint = roll_sp;
 	_pitch_setpoint = pitch_sp;
 	_attitude_setpoint = Quatf(Eulerf(roll_sp, pitch_sp, heading));
-
-	// Stage 2, magnitude: normalized, not Newtons. The hover thrust estimate stands in for
-	// the mass/gravity product the prototype knew exactly - hover thrust is by definition
-	// what produces 1 g, so a demand of a m/s^2 costs a/g of it.
-	//
-	// Only the hover term is divided by cos(tilt), matching the prototype's
-	// base_thrust = m*g/(4*tilt_den) with its altitude correction left undivided.
-	// acceleration_sp(2) is NED down-positive, so climbing (negative) adds thrust.
-	const float cos_tilt = math::max(fabsf(Dcmf(state.q)(2, 2)), kMinCosTilt);
-	const float collective = state.hover_thrust / cos_tilt
-				 - acceleration_sp(2) * state.hover_thrust / CONSTANTS_ONE_G;
-
-	_thrust_setpoint = Vector3f(0.f, 0.f,
-				    -math::constrain(collective, command.thrust_min, command.thrust_max));
-
-	_position_setpoint = command.position_sp;
-	_velocity_setpoint = command.velocity_sp;
-	_acceleration_setpoint = acceleration_sp;
-	_position_stage_valid = true;
 }
 
 Vector3f EigenController::angleToRateSetpoint(const mc_ctrl::ControllerState &state, const float yaw_rate_setpoint)
@@ -273,8 +253,12 @@ Vector3f EigenController::eigenTorque(const Vector3f &rate_setpoint, const Vecto
 	// Desired angular acceleration. The cross terms (+b, -b) are the imaginary part of the
 	// eigenvalue pair -wn +/- j*b: this is what couples the two axes into one rotating
 	// mode. The +alpha terms cancel the rate damping the airframe is assumed to have.
-	const float roll_accel_des = _wn * roll_rate_error + _b * pitch_rate_error + _alpha * p;
-	const float pitch_accel_des = _wn * pitch_rate_error - _b * roll_rate_error + _alpha * q;
+	//
+	// _wn_eff / _b_eff, not _wn / _b: the adaptive pole angle (MC_POLE_*) acts by
+	// rotating this pair in polar form, and with the adapter disabled they are the
+	// configured values exactly.
+	const float roll_accel_des = _wn_eff * roll_rate_error + _b_eff * pitch_rate_error + _alpha * p;
+	const float pitch_accel_des = _wn_eff * pitch_rate_error - _b_eff * roll_rate_error + _alpha * q;
 
 	// Yaw carries no feedback term. In the prototype's algebra M_dyn(2,2) = -beta and
 	// A_r(2,2) = -beta cancel exactly, leaving pure feedforward - cancelling the assumed
@@ -308,12 +292,14 @@ Vector3f EigenController::eigenTorque(const Vector3f &rate_setpoint, const Vecto
 bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 			     float dt, mc_ctrl::ControllerOutput &output)
 {
-	// HARD CONTRACT from the interface. There is nothing to unwind in a law with no
-	// integrators, but the cached stage outputs and the angle-error history are dropped so
-	// a mode change cannot carry either across.
+	// HARD CONTRACT from the interface. The shared stage's position integrator is the one
+	// thing here that genuinely winds up, and zeroing it on the ground is what keeps the
+	// vehicle from leaping at takeoff. The cached stage outputs and the angle-error history
+	// go too, so a mode change cannot carry either across.
 	if (command.reset_integrals || !state.armed) {
 		_rate_setpoint.setZero();
-		_position_stage_valid = false;
+		_trajectory_stage.resetIntegral();
+		_trajectory_stage.invalidateStage();
 		_first_attitude_update = true;
 	}
 
@@ -323,9 +309,17 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	case mc_ctrl::ControlLevel::Trajectory: {
 			// Gated on a fresh local position sample so the position stage keeps
 			// mc_pos_control's cadence instead of being pulled up to gyro rate.
-			if (state.freshness.position_new || !_position_stage_valid) {
-				stepTrajectoryToAttitude(state, command);
+			if (state.freshness.position_new || !_trajectory_stage.stageValid()) {
+				stepTrajectoryToAcceleration(state, command);
 			}
+
+			// Resolved against the heading EVERY cycle, deliberately outside the gate
+			// above. The acceleration demand is a position-stage quantity and is
+			// correctly held between position samples; the heading it is resolved
+			// against is not. Holding both would freeze the roll/pitch pair in a frame
+			// the vehicle has since rotated out of, and the angle PD would then chase
+			// that frozen frame. Two trig calls at gyro rate.
+			resolveAccelerationToTilt(state, command);
 
 			// Yaw rate setpoint is zero: heading is not controlled at this level. See
 			// the file comment.
@@ -345,7 +339,7 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 			_thrust_setpoint = command.thrust_body_sp;
 
 			rate_setpoint = angleToRateSetpoint(state, command.yaw_sp_move_rate);
-			_position_stage_valid = false;
+			_trajectory_stage.invalidateStage();
 			break;
 		}
 
@@ -356,7 +350,7 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 		_thrust_setpoint = command.thrust_body_sp;
 		_attitude_setpoint = Quatf(NAN, NAN, NAN, NAN);
 		_attitude_error.setZero();
-		_position_stage_valid = false;
+		_trajectory_stage.invalidateStage();
 		// The angle PD is not running, so its error history is stale the moment we
 		// return to a level that uses it.
 		_first_attitude_update = true;
@@ -368,7 +362,116 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	}
 
 	_rate_setpoint = rate_setpoint;
+
+	/*
+	 * ADAPTIVE POLE ANGLE (MC_POLE_*), applied BEFORE the block is built from the pair.
+	 *
+	 * In polar form (wn, b) IS the pole: M_dyn = -rho*R(theta) with rho = hypot(wn, b)
+	 * and theta = atan2(b, wn), placing the pair at -rho*e^{+-j theta} and making the
+	 * damping ratio cos(theta). Rotating the pair therefore slides the pole around its
+	 * own circle of constant magnitude - it retunes the damping without changing how hard
+	 * the block pulls, which is the whole reason the level-1 twin was moved to this
+	 * parameterisation. theta_b is an OFFSET from the configured angle, so with the
+	 * adapter disabled these stay exactly the configured pair (set in updateParams).
+	 */
+	if (_pole.enabled()) {
+		const float rho = sqrtf(_wn * _wn + _b * _b);
+		const float theta = atan2f(_b, _wn) + _pole.thetaB();
+		_wn_eff = rho * cosf(theta);
+		_b_eff = rho * sinf(theta);
+	}
+
 	_torque = eigenTorque(rate_setpoint, state.angular_velocity);
+
+	/*
+	 * THE SEAT (MC_SEAT_*). Applied to the PHYSICAL torque, before MC_EIG_TRQ_MAX
+	 * normalises it, so it operates in the same units as the level-1 twin.
+	 *
+	 * xd = tau/I, UNMODIFIED - deliberately not "corrected" to strip the gyroscopic
+	 * feedforward back out. That correction (tried 2026-09-11) breaks a lag-invariance
+	 * identity this pairing has and the stripped one does not:
+	 *
+	 *   Let g = (Izz-Iyy)/Ixx * q*r (the feedforward eigenTorque() folds into tau) and
+	 *   drift = -alpha*p - g, both evaluated at the CURRENT tick, no lag anywhere in
+	 *   either. With actuator delay tau_lag, Euler's equation (real q,r, real physics)
+	 *   gives measured pdot(t) = accel_des(t-tau_lag) + g(t-tau_lag) - g(t). Substitute:
+	 *
+	 *     xa(t) = pdot_meas(t) - drift(t) = accel_des(t-tau_lag) + g(t-tau_lag) + alpha*p(t)
+	 *     xd(t-tau_lag) = tau(t-tau_lag)/I = accel_des(t-tau_lag) + g(t-tau_lag)
+	 *     xa(t) - xd(t-tau_lag) = alpha*p(t)
+	 *
+	 *   which is EXACTLY ZERO at alpha=0 (this law's every tested configuration),
+	 *   for ANY lag, ANY q,r trajectory - g cancels completely regardless of how much
+	 *   it moved during the delay. That property is what makes "the gap between xd and
+	 *   xa is attributable to lag alone" true. Stripping g from xd and dropping the
+	 *   drift subtraction from xa (the 2026-09-11 attempt) does NOT have this property:
+	 *   redo the same substitution and a residual g(t-tau_lag)-g(t) survives, which does
+	 *   not vanish (measured ~0.37-0.95 rad/s^2 in real telemetry, the same order as the
+	 *   roll/pitch command itself) - a self-inflicted confound with no counterpart at
+	 *   level 1. Reverted back to the original, level-1-identical pairing.
+	 *
+	 * xa is the measured acceleration with the SAME assumed coupling/damping (drift)
+	 * removed, evaluated fresh from CURRENT p,q,r every tick - not the feedforward's own
+	 * (possibly stale) internal value. PX4 supplies angular_accel directly
+	 * (vehicle_angular_velocity.xyz_derivative), so unlike level 1 there is no rate
+	 * difference and no sample alignment to get wrong - but note it is a backward
+	 * difference through a 2-pole low-pass at IMU_DGYRO_CUTOFF (20 Hz by default), so
+	 * it carries a phase of its own that the seat will read as part of the lag.
+	 */
+	if ((_seat.mode() != Seat::Mode::Off) || _pole.enabled()) {
+		const float p = state.angular_velocity(0);
+		const float q = state.angular_velocity(1);
+		const float r = state.angular_velocity(2);
+
+		const Vector2f xd(_torque(0) / _inertia(0), _torque(1) / _inertia(1));
+
+		const Vector2f drift(-_alpha * p + (_inertia(1) - _inertia(2)) / _inertia(0) * r * q,
+				     -_alpha * q + (_inertia(2) - _inertia(0)) / _inertia(1) * r * p);
+		const Vector2f xa(state.angular_accel(0) - drift(0),
+				  state.angular_accel(1) - drift(1));
+
+		_seat_saturated = _seat.saturated() ? 1.f : 0.f;
+		_seat_xd_norm = xd.norm();
+		_seat_xa_norm = xa.norm();
+
+		/*
+		 * The pole adapter reads the SAME achieved acceleration the seat does, but a
+		 * different reference. The seat's xd is "what the wrench I just sent should
+		 * produce"; this one is M_dyn applied to the measured rate vector - "what the
+		 * DESIGN asks of where the vehicle actually is". Expanded from the block
+		 * [[-wn, -b], [b, -wn]] acting on (p, q), using the effective pair so the
+		 * observable is read against the design currently in force rather than the
+		 * nominal one.
+		 *
+		 * Ordered before the seat so both see the same pre-rotation torque, and it
+		 * applies no rotation of its own - theta_b takes effect through the block on
+		 * the NEXT tick, exactly as at level 1.
+		 */
+		if (_pole.mode() == PoleAdapter::Mode::Gradient) {
+			const Vector2f mdyn_x(-(_wn_eff * p + _b_eff * q),
+					      -(_wn_eff * q - _b_eff * p));
+			_pole.adapt(mdyn_x, xa, r, dt);
+
+		} else if (_pole.mode() == PoleAdapter::Mode::ExtremumSeek) {
+			/*
+			 * Mode 2's pair is TRANSLATIONAL, not rotational, and that is the point: the
+			 * commanded horizontal acceleration comes from the position loop, so unlike
+			 * mode 1's M_dyn.x reference it does not move when theta_b moves and cannot
+			 * cancel itself out of the cost. state.acceleration is the filtered derivative
+			 * of velocity (MPC_VELD_LP), which is the only achieved-acceleration signal
+			 * the framework offers - its filter lag is common to both vectors' directions
+			 * only approximately, which is a further reason this law descends an averaged
+			 * cost rather than trusting any single sample.
+			 */
+			const Vector2f a_cmd(_acceleration_setpoint(0), _acceleration_setpoint(1));
+			const Vector2f a_meas(state.acceleration(0), state.acceleration(1));
+			_pole.adaptExtremum(a_cmd, a_meas, r, dt);
+		}
+
+		if (_seat.mode() != Seat::Mode::Off) {
+			_torque = _seat.apply(_torque, xd, xa, r, dt);
+		}
+	}
 
 	// N m -> normalized. control_allocator normalizes its own mix columns, so what it
 	// wants here is dimensionless and physical torque would be silently misinterpreted.
@@ -398,23 +501,20 @@ void EigenController::fillLocalPositionSetpoint(vehicle_local_position_setpoint_
 {
 	// Telemetry only. Stock fills this from PositionControl's internal setpoints; here it
 	// comes from what the PD stage actually used, so a log still shows what was asked for
-	// versus what was flown.
-	sp.x = _position_setpoint(0);
-	sp.y = _position_setpoint(1);
-	sp.z = _position_setpoint(2);
-	sp.vx = _velocity_setpoint(0);
-	sp.vy = _velocity_setpoint(1);
-	sp.vz = _velocity_setpoint(2);
-	_acceleration_setpoint.copyTo(sp.acceleration);
+	// versus what was flown. The attitude and thrust setpoints are this law's own, so the
+	// stage cannot source them itself.
+	_trajectory_stage.fillLocalPositionSetpoint(sp, _attitude_setpoint, _thrust_setpoint);
+}
 
-	// NED thrust, matching PositionControl::getLocalPositionSetpoint().
-	const Dcmf R_sp(_attitude_setpoint);
-	const Vector3f thrust_ned = R_sp * _thrust_setpoint;
-	thrust_ned.copyTo(sp.thrust);
-
-	// Heading is not controlled at Trajectory level, so there is no yaw setpoint to report.
-	sp.yaw = NAN;
-	sp.yawspeed = NAN;
+void EigenController::setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &feedback)
+{
+	// Roll and pitch only: the seat does not rotate yaw, so a yaw-only clip is none of
+	// its business. Freezing matters because once the mixer saturates the achieved
+	// direction stops following the commanded one for reasons unrelated to lag.
+	const bool rp_saturated = feedback.saturation_positive(0) || feedback.saturation_negative(0)
+				  || feedback.saturation_positive(1) || feedback.saturation_negative(1);
+	_seat.setSaturated(rp_saturated);
+	_pole.setSaturated(rp_saturated);
 }
 
 void EigenController::fillStatus(mc_controller_status_s &status) const
@@ -424,9 +524,18 @@ void EigenController::fillStatus(mc_controller_status_s &status) const
 	status.debug[2] = _rate_setpoint(0);
 	status.debug[3] = _rate_setpoint(1);
 	status.debug[4] = _rate_setpoint(2);
-	// Physical torque, before MC_EIG_TRQ_MAX: this is what tells you whether the scale is
-	// set sensibly, which the normalized value published downstream cannot.
-	status.debug[5] = _torque(0);
-	status.debug[6] = _torque(1);
-	status.debug[7] = _position_stage_valid ? 1.f : 0.f;
+	// Seat diagnostics. The physical torque that used to sit in [5] and [6] is exactly
+	// recoverable as torque_sp * MC_EIG_TRQ_MAX, so nothing is lost by reusing them, and
+	// what the seat does is not recoverable from the log at all without these: whether
+	// the allocator gate froze the update, and the two magnitudes that decide both the
+	// CROSS drive and whether the pair is measurable in the first place.
+	status.debug[5] = _seat_saturated;
+	status.debug[6] = _seat_xd_norm;
+	status.debug[7] = _seat_xa_norm;
+	status.seat_theta = _seat.theta();
+	status.seat_alpha = _seat.alpha();
+	status.pole_theta_b = _pole.thetaB();
+	status.pole_alpha_b = _pole.alphaB();
+	status.pole_theta_hat = _pole.thetaBHat();
+	status.pole_cost = _pole.cost();
 }

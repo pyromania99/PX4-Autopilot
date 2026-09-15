@@ -36,6 +36,9 @@
 add_subdirectory(ControllerApi)
 add_subdirectory(VehicleState)
 add_subdirectory(CommandFrontEnd)
+# Before controllers/: the laws there link McControllerTrajectoryStage, and
+# target_link_libraries() needs the target to already exist at configure time.
+add_subdirectory(TrajectoryStage)
 add_subdirectory(controllers)
 
 px4_add_module(
@@ -46,8 +49,6 @@ px4_add_module(
 	SRCS
 		MulticopterController.cpp
 		MulticopterController.hpp
-		OuterLoop.cpp
-		OuterLoop.hpp
 	MODULE_CONFIG
 		module.yaml
 	# Takeoff / SlewRate are NOT listed here: px4_add_module() calls
@@ -58,6 +59,7 @@ px4_add_module(
 		MulticopterControllerApi
 		MulticopterControllers
 		McControllerCommandFrontEnd
+		McControllerTrajectoryStage
 		McControllerVehicleState
 		McManualMapping
 		mathlib

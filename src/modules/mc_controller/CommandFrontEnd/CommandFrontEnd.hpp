@@ -82,27 +82,6 @@ public:
 
 	void reset();
 
-	/**
-	 * Inner-loop instance only: tell the front end that a separate outer-loop work
-	 * item owns the Trajectory path.
-	 *
-	 * When active, this instance does NOT run the trajectory front end. At
-	 * Trajectory level it instead consumes the vehicle_attitude_setpoint published
-	 * by the outer loop and marks the command `outer_stage_complete`, so the
-	 * controller skips its own position stage. This is exactly the interface stock
-	 * uses between mc_pos_control and mc_att_control.
-	 */
-	void setOuterStageActive(bool active) { _outer_stage_active = active; }
-	bool outerStageActive() const { return _outer_stage_active; }
-
-	/**
-	 * True when the outer loop has stopped delivering attitude setpoints at Trajectory
-	 * level. The module latches the reference fallback on this: no other guard can see
-	 * it, because the inner controller happily keeps tracking the last held setpoint.
-	 * Always false unless setOuterStageActive(true) and the level is Trajectory.
-	 */
-	bool outerStageStale() const { return _outer_stage_stale; }
-
 	// --- inputs, fed by the module -----------------------------------------
 	void setControlMode(const vehicle_control_mode_s &vcm) { _vcm = vcm; }
 	void setVehicleStatus(const vehicle_status_s &vs);
@@ -169,13 +148,9 @@ private:
 	/// ~100 Hz position rate it is published at, so a couple of missed cycles are not
 	/// treated as a failure, but short enough to catch a stopped outer stage well
 	/// inside a second.
-	static constexpr uint64_t kOuterStageTimeoutUs{100000}; // 100 ms
 
 	uint64_t _time_position_control_enabled{0};
 	bool _position_control_was_enabled{false};
-	bool _outer_stage_active{false};
-	uint64_t _time_outer_stage_enabled{0};
-	bool _outer_stage_stale{false};
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::MPC_XY_VEL_MAX>)    _param_mpc_xy_vel_max,

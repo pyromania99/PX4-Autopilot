@@ -287,6 +287,61 @@ TEST_F(CascadedPdControllerTest, LargeHeadingErrorProducesNoYawTorque)
 	EXPECT_NEAR(euler.psi(), math::radians(90.f), 1e-3f);
 }
 
+/**
+ * R_des is anchored on the vehicle's heading, so that anchor has to keep up with the
+ * vehicle - including on the cycles between two position samples, which at 250 Hz gyro and
+ * 125 Hz position is every other one.
+ *
+ * The tilt DIRECTION is a position-stage quantity and is correctly held. The heading is not:
+ * holding it too would leave R_des expressed in a frame the vehicle has rotated out of, and
+ * the geometric error would read that stale frame as roll and pitch to correct. The error is
+ * r*dt_position and so is invisible in hover and linear in spin rate.
+ */
+TEST_F(CascadedPdControllerTest, AttitudeSetpointHeadingFollowsTheVehicleBetweenPositionSamples)
+{
+	ControllerState state = hoverState();
+
+	// A lateral error, so R_des carries a real tilt whose heading anchoring is observable.
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp = state.position + Vector3f(10.f, 0.f, 0.f);
+
+	ControllerOutput first{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, first));
+
+	const Dcmf R_first(Quatf(first.attitude_setpoint));
+	const Vector3f body_z_first = R_first.col(2);
+	ASSERT_NEAR(Eulerf(Quatf(first.attitude_setpoint)).psi(), 0.f, 1e-5f);
+
+	// Next gyro cycle: the vehicle has yawed 30 deg and no new position sample has arrived,
+	// so the position stage does not run.
+	state.q = Quatf(Eulerf(0.f, 0.f, math::radians(30.f)));
+	state.heading = math::radians(30.f);
+	state.freshness.position_new = false;
+
+	ControllerOutput second{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, second));
+
+	const Dcmf R_second(Quatf(second.attitude_setpoint));
+
+	// The anchor moved with the vehicle...
+	EXPECT_NEAR(Eulerf(Quatf(second.attitude_setpoint)).psi(), math::radians(30.f), 1e-3f);
+
+	// ...and only the anchor: the commanded tilt direction in NED is untouched, because the
+	// position stage did not re-run and had nothing new to say.
+	const Vector3f body_z_second = R_second.col(2);
+	EXPECT_NEAR(body_z_second(0), body_z_first(0), 1e-5f);
+	EXPECT_NEAR(body_z_second(1), body_z_first(1), 1e-5f);
+	EXPECT_NEAR(body_z_second(2), body_z_first(2), 1e-5f);
+
+	// Which is the property that matters downstream: the vehicle is level and yawed, the
+	// setpoint is the same NED tilt, so the geometric error is unchanged in magnitude and
+	// carries no yaw component invented by a stale frame. The tolerance is loose because
+	// this quantity is ~1.8 and reaches here through a float32 quaternion round-trip at
+	// 30 deg of yaw; the tilt-direction check above is the tight one.
+	EXPECT_NEAR(second.rate_setpoint(2), 0.f, 1e-6f);
+	EXPECT_NEAR(Vector2f(second.rate_setpoint).norm(), Vector2f(first.rate_setpoint).norm(), 2e-3f);
+}
+
 /// With MC_PD_YAWR_D raised, the only yaw action available is damping the yaw rate.
 TEST_F(CascadedPdControllerTest, YawTorqueIsPureRateDamping)
 {
@@ -425,7 +480,6 @@ TEST_F(CascadedPdControllerTest, DeclaresFullStackSupport)
 	EXPECT_FALSE(_controller->supportsLevel(ControlLevel::None));
 
 	// The law is cheap enough to run entirely on the gyro-rate queue.
-	EXPECT_FALSE(_controller->hasOuterStage());
 }
 
 /// In Acro the D gains double as rate gains: tau == Kd * (rate_sp - w).

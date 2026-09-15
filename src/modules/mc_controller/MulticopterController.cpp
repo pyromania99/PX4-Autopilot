@@ -55,13 +55,6 @@ MulticopterController::MulticopterController() :
 
 MulticopterController::~MulticopterController()
 {
-	// Take the outer item off its queue and out of the shared pointer before freeing
-	// anything it might still be calling into.
-	_active_controller.store(nullptr);
-	_outer_loop.stop();
-
-	delete _controller_to_delete;
-
 	// _controller aliases _reference when MC_CTRL_ALG selects the reference cascade.
 	if (_controller != _reference) {
 		delete _controller;
@@ -85,10 +78,6 @@ bool MulticopterController::init()
 		return false;
 	}
 
-	if (!_outer_loop.init()) {
-		return false;
-	}
-
 	// Registered last: this is what starts scheduling Run(), and everything Run()
 	// touches has to exist by then.
 	if (!_vehicle_angular_velocity_sub.registerCallback()) {
@@ -99,27 +88,8 @@ bool MulticopterController::init()
 	return true;
 }
 
-void MulticopterController::reclaimRetiredController()
-{
-	// Safe once the outer item reports itself idle: it sets that flag before loading
-	// _active_controller and clears it after its last use, and we re-pointed
-	// _active_controller before retiring, so its next cycle cannot reach this object.
-	if ((_controller_to_delete != nullptr) && !_outer_loop.inUse()) {
-		delete _controller_to_delete;
-		_controller_to_delete = nullptr;
-	}
-}
-
 bool MulticopterController::instantiateController(int32_t alg)
 {
-	// One retirement in flight at a time; that keeps the handshake below a simple
-	// two-state one. The caller retries on the next cycle.
-	reclaimRetiredController();
-
-	if (_controller_to_delete != nullptr) {
-		return false;
-	}
-
 	MulticopterControllerBase *previous = _controller;
 	MulticopterControllerBase *next = mc_ctrl::createController(alg, this, _reference);
 
@@ -133,15 +103,10 @@ bool MulticopterController::instantiateController(int32_t alg)
 	_fallback_latched = false;
 	_fallback_reason = mc_controller_status_s::FALLBACK_NONE;
 
-	// Publish to the outer item BEFORE retiring the old instance, so the outer item
-	// can never load a pointer we are about to free.
-	_active_controller.store(_controller);
-	_front_end.setOuterStageActive(_controller->hasOuterStage());
-
+	// Freed immediately: this runs on the only work item that touches the controller,
+	// and never while armed, so nothing else can hold the pointer.
 	if ((previous != nullptr) && (previous != _reference) && (previous != next)) {
-		// Freed from Run() once the outer item goes idle - never here, where it may
-		// still be inside previous->updateOuter().
-		_controller_to_delete = previous;
+		delete previous;
 	}
 
 	_active_alg = alg;
@@ -152,9 +117,8 @@ bool MulticopterController::instantiateController(int32_t alg)
 		mavlink_log_critical(nullptr, "MC_CTRL_GT: controller on ground truth\t");
 	}
 
-	PX4_INFO("controller: %s (MC_CTRL_ALG=%d), levels=0x%02x, queues=%s",
-		 _controller->name(), (int)alg, _controller->supportedLevels(),
-		 _controller->hasOuterStage() ? "split (stock separation)" : "single (gyro rate)");
+	PX4_INFO("controller: %s (MC_CTRL_ALG=%d), levels=0x%02x",
+		 _controller->name(), (int)alg, _controller->supportedLevels());
 
 	// Surface an unsupported-level configuration on the ground rather than at the
 	// first mode switch in the air.
@@ -290,12 +254,21 @@ void MulticopterController::pollInputs()
 		feedback.torque_setpoint_achieved = allocator_status.torque_setpoint_achieved;
 		feedback.unallocated_torque = Vector3f(allocator_status.unallocated_torque);
 
+		// Threshold in physical N.m, not FLT_EPSILON. Measured 2026-09-12: the allocator's
+		// own solver residual on an UNSATURATED roll/pitch axis sits at 1e-8 to 2e-7 N.m -
+		// comparable to FLT_EPSILON (1.19e-7) itself - so that threshold chattered
+		// true/false every tick on pure numerical noise, latching a consumer's "saturated"
+		// state true 74-85% of the time in flights with no real roll/pitch saturation at
+		// all. 1e-3 N.m sits four orders above that noise floor and three below the
+		// smallest shortfall seen during an actual saturated failure (~0.1 N.m+).
+		static constexpr float kTorqueSaturationEps = 1e-3f;
+
 		if (!allocator_status.torque_setpoint_achieved) {
 			for (size_t i = 0; i < 3; i++) {
-				if (allocator_status.unallocated_torque[i] > FLT_EPSILON) {
+				if (allocator_status.unallocated_torque[i] > kTorqueSaturationEps) {
 					feedback.saturation_positive(i) = true;
 
-				} else if (allocator_status.unallocated_torque[i] < -FLT_EPSILON) {
+				} else if (allocator_status.unallocated_torque[i] < -kTorqueSaturationEps) {
 					feedback.saturation_negative(i) = true;
 				}
 			}
@@ -345,7 +318,6 @@ void MulticopterController::Run()
 {
 	if (should_exit()) {
 		_vehicle_angular_velocity_sub.unregisterCallback();
-		_outer_loop.stop();
 		exit_and_cleanup(desc);
 		return;
 	}
@@ -363,10 +335,6 @@ void MulticopterController::Run()
 
 	_state_provider.updateAngularVelocity(angular_velocity);
 	pollInputs();
-
-	// A controller retired by an earlier MC_CTRL_ALG switch is freed here, once the
-	// outer item is idle - never at the point of the switch itself.
-	reclaimRetiredController();
 
 	const mc_ctrl::ControllerState &state = _state_provider.getState();
 	const uint64_t now = hrt_absolute_time();
@@ -387,13 +355,6 @@ void MulticopterController::Run()
 			_fallback_reason = mc_controller_status_s::FALLBACK_NONE;
 			_controller->reset();
 			PX4_INFO("fallback cleared on disarm");
-		}
-
-		if (_outer_stage_disabled) {
-			// Hand the trajectory stage back to the outer item.
-			_outer_stage_disabled = false;
-			_active_controller.store(_controller);
-			_front_end.setOuterStageActive(_controller->hasOuterStage());
 		}
 
 		// Re-arm on a clean slate. Carrying the previous flight's timestamp across the
@@ -435,45 +396,10 @@ void MulticopterController::Run()
 
 	MulticopterControllerBase *active = _fallback_latched ? _reference : _controller;
 
-	// The reference cascade is split; a fallback from a monolithic controller must
-	// therefore switch the front end over, or the trajectory path would be run by
-	// neither item.
-	if (!_outer_stage_disabled && (_front_end.outerStageActive() != active->hasOuterStage())) {
-		_front_end.setOuterStageActive(active->hasOuterStage());
-		_active_controller.store(active);
-	}
-
 	// A level outside the controller's declared support latches the fallback.
 	if (!_fallback_latched && !active->supportsLevel(command.level)) {
 		latchFallback(mc_controller_status_s::FALLBACK_UNSUPPORTED_LEVEL, "unsupported control level");
 		active = _reference;
-	}
-
-	// The outer item stopped delivering attitude setpoints. Nothing else can detect
-	// this: `active` keeps tracking the held setpoint and reports a perfectly valid
-	// output, so neither the NaN guard nor the watchdog above would ever fire, and the
-	// vehicle would fly the last commanded attitude indefinitely.
-	//
-	// Falling back to the reference is not enough on its own - it is split too, so it
-	// would consume the same stale setpoint. Take the outer item out of the loop and
-	// run the trajectory stage inline here for the rest of the armed period.
-	if (!_outer_stage_disabled && armed_now && _front_end.outerStageStale()) {
-		latchFallback(mc_controller_status_s::FALLBACK_STALE, "outer loop stopped publishing");
-		active = _reference;
-
-		// Same handshake as retiring a controller: take the position stage over only
-		// while the outer item is between cycles. Flipping it mid-cycle would leave
-		// _position_control running on both queues at once - which is precisely the
-		// race the whole outer/inner split exists to avoid. The usual cause of this
-		// branch is updateOuter() returning false, where the outer item is cycling
-		// normally and idle most of the time, so the takeover lands within a cycle or
-		// two; retried every cycle until it does.
-		if (!_outer_loop.inUse()) {
-			_outer_stage_disabled = true;
-			_active_controller.store(nullptr);
-			_front_end.setOuterStageActive(false);
-			active->reset();
-		}
 	}
 
 	if (state.freshness.position_new) {
@@ -538,12 +464,7 @@ void MulticopterController::publishIntermediateTopics(const CommandFrontEnd::Pub
 		_vehicle_rates_setpoint_pub.publish(sp);
 	}
 
-	// takeoff_status feeds land_detector. When the outer item is active it owns the
-	// takeoff state machine and publishes this itself.
-	if (_front_end.outerStageActive()) {
-		return;
-	}
-
+	// takeoff_status feeds land_detector.
 	const uint8_t takeoff_state = static_cast<uint8_t>(_front_end.takeoffState());
 
 	if (takeoff_state != _takeoff_state) {
@@ -610,7 +531,7 @@ void MulticopterController::publishOutput(const mc_ctrl::ControllerOutput &outpu
 	//                external (offboard/VTOL) and must not be echoed
 	//   BodyRate   : the rate setpoint is either ours (acro, published by the front
 	//                end) or external, so nothing is published here
-	if ((_last_level == mc_ctrl::ControlLevel::Trajectory) && !_front_end.outerStageActive()) {
+	if (_last_level == mc_ctrl::ControlLevel::Trajectory) {
 		if (output.attitude_setpoint.isAllFinite()) {
 			vehicle_attitude_setpoint_s attitude_setpoint{};
 			output.attitude_setpoint.copyTo(attitude_setpoint.q_d);
@@ -653,8 +574,8 @@ void MulticopterController::publishOutput(const mc_ctrl::ControllerOutput &outpu
 	// was the only single-queue controller, but it silently starves the topic for any
 	// other one - the exact starvation the paragraph above describes. A controller with no
 	// internal position setpoint leaves the hook unimplemented and publishes the zeroed
-	// struct, matching what OuterLoop already does on the split path.
-	if ((_last_level == mc_ctrl::ControlLevel::Trajectory) && !_front_end.outerStageActive()) {
+	// struct.
+	if (_last_level == mc_ctrl::ControlLevel::Trajectory) {
 		vehicle_local_position_setpoint_s local_sp{};
 		active->fillLocalPositionSetpoint(local_sp);
 		local_sp.timestamp = now;
@@ -760,7 +681,6 @@ int MulticopterController::print_status()
 	PX4_INFO("supported levels : 0x%02x", active ? active->supportedLevels() : 0);
 	PX4_INFO("control level    : %s", mc_ctrl::levelName(_last_level));
 	PX4_INFO("fallback         : %s (reason %d)", _fallback_latched ? "LATCHED" : "no", _fallback_reason);
-	PX4_INFO("outer stage      : %s", _outer_stage_disabled ? "DISABLED (stopped publishing)" : "normal");
 	PX4_INFO("updates          : %lu", (unsigned long)_update_count);
 	PX4_INFO("invalid outputs  : %lu", (unsigned long)_invalid_output_count);
 
@@ -769,7 +689,6 @@ int MulticopterController::print_status()
 			 mc_ctrl::algorithmName(_pending_alg));
 	}
 
-	_outer_loop.printStatus();
 
 	if (active) {
 		active->printStatus();

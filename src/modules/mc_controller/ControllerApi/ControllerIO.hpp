@@ -194,15 +194,6 @@ struct ControllerCommand {
 	bool offboard{false};
 
 	/**
-	 * True when the outer (trajectory -> attitude) stage already ran on the
-	 * lower-priority work queue this cycle, so attitude_sp / thrust_body_sp /
-	 * yaw_sp_move_rate are already populated and the controller must NOT re-run its
-	 * own position stage. Only ever set at Trajectory level, and only for
-	 * controllers whose hasOuterStage() returns true.
-	 */
-	bool outer_stage_complete{false};
-
-	/**
 	 * HARD CONTRACT: when true the controller MUST zero its integrators.
 	 * Set on mode change, on the ground, and when disarmed. The framework cannot
 	 * reach into a plugin's internal state, so this is the one behaviour that

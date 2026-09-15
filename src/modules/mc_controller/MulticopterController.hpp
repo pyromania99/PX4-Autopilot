@@ -54,10 +54,8 @@
 #include <MulticopterControllerBase.hpp>
 #include <VehicleStateProvider.hpp>
 
-#include "OuterLoop.hpp"
 
 #include <lib/perf/perf_counter.h>
-#include <px4_platform_common/atomic.h>
 #include <px4_platform_common/module.h>
 #include <px4_platform_common/module_params.h>
 #include <px4_platform_common/px4_work_queue/WorkItem.hpp>
@@ -115,7 +113,6 @@ private:
 	void handleParameterUpdate();
 	void pollInputs();
 	bool instantiateController(int32_t alg);
-	void reclaimRetiredController();
 	void publishOutput(const mc_ctrl::ControllerOutput &output, uint64_t timestamp_sample, float dt);
 	void publishIntermediateTopics(const CommandFrontEnd::Publications &publications);
 	void publishStatus(float dt);
@@ -138,32 +135,8 @@ private:
 	CascadedPdController *_reference{nullptr};
 	MulticopterControllerBase *_controller{nullptr};
 
-	/**
-	 * The controller currently in effect, shared with the outer-loop work item.
-	 * Atomic because two work queues read it; it is only ever written from this item.
-	 */
-	px4::atomic<MulticopterControllerBase *> _active_controller{nullptr};
-
-	/// Trajectory-level work item on nav_and_controllers — stock's queue separation.
-	/// Not a ModuleParams child: it refreshes its own parameters on its own queue.
-	OuterLoop _outer_loop{&_active_controller};
-
-	/**
-	 * Retired controller awaiting deletion.
-	 *
-	 * Freeing it inside instantiateController() would be a use-after-free: the outer
-	 * item may already have loaded the pointer and be inside updateOuter(). We publish
-	 * the replacement into _active_controller first and free the old one from Run(),
-	 * once the outer item reports itself idle - at which point its next cycle is
-	 * guaranteed to load the new pointer.
-	 */
-	MulticopterControllerBase *_controller_to_delete{nullptr};
-
 	bool _fallback_latched{false};
 	bool _was_armed{false};
-	/// Set when the outer item stopped delivering and we took the trajectory stage back
-	/// inline. Sticky for the armed period, like the fallback latch itself.
-	bool _outer_stage_disabled{false};
 	uint8_t _fallback_reason{mc_controller_status_s::FALLBACK_NONE};
 
 	/// MC_CTRL_ALG value the live _controller was built from. Distinct from

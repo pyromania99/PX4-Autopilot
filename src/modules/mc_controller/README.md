@@ -23,15 +23,6 @@ vehicle_control_mode / status / land ──────┤
 local_position / attitude / angular_vel ───┤
                                            v
     ┌──────────────────────────────────────────────────────┐
-    │ mc_controller_outer  (nav_and_controllers, ~125 Hz)  │
-    │   driven by vehicle_local_position                   │
-    │   VehicleStateProvider + CommandFrontEnd (its own)   │
-    │   controller->updateOuter()   ── the heavy           │
-    │                                  trajectory math     │
-    └──────────────────────────────────────────────────────┘
-           │ vehicle_attitude_setpoint (uORB, no shared state)
-           v
-    ┌──────────────────────────────────────────────────────┐
     │ mc_controller        (rate_ctrl WQ, gyro rate)       │
     │   driven by vehicle_angular_velocity                 │
     │   VehicleStateProvider ──► ControllerState           │
@@ -40,6 +31,7 @@ local_position / attitude / angular_vel ───┤
     │         failsafe, EKF resets, limits)                │
     │                     │                                │
     │   MulticopterControllerBase*  ◄── MC_CTRL_ALG        │
+    │     └─ TrajectoryStage (shared, opt-in)              │
     │                     │                                │
     │   OutputStage: NaN guard, watchdog, fallback         │
     └──────────────────────────────────────────────────────┘
@@ -49,9 +41,9 @@ local_position / attitude / angular_vel ───┤
        control_allocator ──────────► MixingOutput ──► ESCs
 ```
 
-The outer item exists **only if your controller opts in** with `hasOuterStage()`.
-A monolithic full-stack law leaves it off and runs entirely on `rate_ctrl` — see
-[Two work queues, or one](#two-work-queues-or-one).
+The whole law runs on `rate_ctrl`; each stage keeps its own cadence by gating on
+`state.freshness` rather than by splitting work queues — see
+[One work queue](#one-work-queue).
 
 ## Quick start
 
@@ -113,6 +105,9 @@ latch lands here rather than on anything stock.
 
 5. **Add the value** to `MC_CTRL_ALG` in `module.yaml` so QGC shows it.
 
+Optionally, step 6: **reuse the shared trajectory stage** instead of writing your
+own position loop — see below.
+
 ## The interface
 
 ```cpp
@@ -145,63 +140,102 @@ class MyController : public MulticopterControllerBase
 This is what lets one control law serve every flight mode: you never touch
 `vehicle_control_mode` or worry about which mode is active.
 
-## Two work queues, or one
+## Sharing the trajectory stage
 
-Stock PX4 splits the cascade across two work queues: `mc_pos_control` on
-`nav_and_controllers` at ~125 Hz, `mc_rate_control` on the high-priority
-`rate_ctrl` queue at gyro rate. Keeping heavy trajectory math off the fast queue
-is what protects inner-loop timing on flight hardware.
+Every law here needs the same thing between a position setpoint and an attitude
+setpoint: a per-axis PD over whatever the flight mode actually commanded, a lateral
+clamp bounded by the tilt limit, and a collective. That is `TrajectoryStage`, and
+`CascadedPdController` and `EigenController` both use it.
 
-**The default here is one queue.** Your `update()` runs the whole law at gyro
-rate. That is the right choice for a monolithic controller — an INDI or SE(3) law
-whose stages share state cannot be cut in half.
-
-If your law *does* separate cleanly, opt in:
+**Opting in is composition.** Hold one, pass your own gains, delegate:
 
 ```cpp
-bool hasOuterStage() const override { return true; }
+#include <TrajectoryStage.hpp>
 
-bool updateOuter(const mc_ctrl::ControllerState &state,
-                 const mc_ctrl::ControllerCommand &command,
-                 float dt, vehicle_attitude_setpoint_s &attitude_setpoint) override;
+// ... a ModuleParams child, so its own gains refresh through the same cascade.
+TrajectoryStage _trajectory_stage;   // constructed with (this)
+
+void MyController::stepTrajectoryToAttitude(const ControllerState &state,
+                                            const ControllerCommand &command)
+{
+    const Vector3f acceleration_sp =
+        _trajectory_stage.computeAccelerationSetpoint(state, command, _pos_p, _pos_d);
+
+    // ... your acceleration -> attitude conversion, which is YOUR law ...
+
+    _thrust_setpoint = _trajectory_stage.computeThrustSetpoint(state, command, acceleration_sp);
+}
 ```
 
-`updateOuter()` then runs on `nav_and_controllers` driven by
-`vehicle_local_position`; its published `vehicle_attitude_setpoint` reaches
-`update()` as `command.attitude_sp` with `command.outer_stage_complete == true`,
-and `update()` skips its own trajectory stage.
+**Opting out is not having one.** There is no virtual to override and no runtime
+branch — write your own stage, as `TemplateController` does.
 
-> **The cross-thread contract.** `updateOuter()` and `update()` run
-> **concurrently on different work queues, on the same controller object.** They
-> MUST touch disjoint member state. Anything that has to cross between them
-> travels through the published `vehicle_attitude_setpoint`, not a shared member.
-> There is no lock, deliberately — a mutex on the gyro path is worse than the
-> latency it would remove.
+What it does NOT own is the acceleration → attitude conversion. That map is what
+distinguishes the laws: `CascadedPdController` builds a body-z direction and a
+quaternion, `EigenController` inverts to small-angle Euler scalars. Those are
+different mathematical objects, not different spellings.
 
-Neither shipped controller opts in today. `CascadedPdController` deliberately does
-not: the whole law is a few dozen flops, so paying for the state-partitioning
-contract buys nothing, and its position stage still runs at position rate because
-`update()` gates it on `state.freshness.position_new`. **Gating on freshness, not
-splitting the queue, is the cheap way to get stage-rate parity** — reach for
-`hasOuterStage()` only when the outer stage is genuinely too expensive for the
-gyro path.
+Three things to wire up if you use it:
 
-The split path is still live and exercised by `OuterLoop`; measured placement when
-a controller does opt in, against stock:
+- forward `command.reset_integrals` to `resetIntegral()`, and call `reset()` from
+  your own `reset()`
+- gate on `state.freshness.position_new || !_trajectory_stage.stageValid()`, and
+  call `invalidateStage()` when you leave `Trajectory` level
+- delegate `fillLocalPositionSetpoint()`, passing your attitude and thrust setpoints
 
+### It owns the only integrator in this module
+
+`MC_OL_XY_I` / `MC_OL_Z_I`, both **shipping at zero**, bounded by `MC_OL_I_LIM`.
+They integrate POSITION error, not velocity error as stock `mc_pos_control` does —
+these laws are not cascades, so `pos_d` acts on velocity error directly and at a
+steady offset the velocity error is zero. A velocity integrator would never see it.
+
+Why zero by default: a PD law holds position perfectly in simulation, where the
+airframe is symmetric and there is no wind, and settles at a standing offset on real
+hardware, where CG offset, thrust asymmetry and estimator tilt bias are always
+present. The offset is `disturbance / Kp` — at `MC_EIG_XY_P = 0.5`, a 1 deg tilt bias
+is 0.34 m — and no amount of tuning removes it, because `Kp` is capped by loop
+separation. Enabling this is a hardware step, not a simulation one.
+
+Altitude is the exception: `mc_hover_thrust_estimator` already supplies the trim, so
+`MC_OL_Z_I` covers only what it does not — the window before it converges, and flight
+regimes where it never validates.
+
+## One work queue
+
+Stock PX4 splits the cascade across two work queues: `mc_pos_control` on
+`nav_and_controllers` at ~125 Hz, `mc_rate_control` on the high-priority `rate_ctrl`
+queue at gyro rate. Keeping heavy trajectory math off the fast queue is what protects
+inner-loop timing on flight hardware.
+
+**Here the whole law runs on `rate_ctrl`, and stage-rate parity comes from freshness
+gating instead.** `update()` is called at gyro rate, but each stage only does work when
+its input is new:
+
+```cpp
+if (state.freshness.position_new || !_trajectory_stage.stageValid()) {
+    stepTrajectoryToAttitude(state, command);   // position rate
+}
 ```
-STOCK   wq:rate_ctrl            mc_rate_control       250.0 Hz
-        wq:nav_and_controllers  mc_att_control        250.0 Hz
-                                mc_pos_control        125.0 Hz
-SPLIT   wq:rate_ctrl            mc_controller         250.0 Hz
-        wq:nav_and_controllers  mc_controller_outer   125.0 Hz
-```
 
-**Known deviation from stock:** the attitude stage sits on `rate_ctrl` here, not
-on `nav_and_controllers`. Deliberate — attitude is a cheap quaternion P law, and
-pairing it with the rate loop removes a uORB hop of latency from the fast
-cascade; the position stage is the expensive part that needed to move. Exact stock
-placement would need a third work item.
+Measured in SITL: 3585 position-stage runs against 7171 cycles, exactly the 1:2 the
+250 Hz gyro / 125 Hz position rates imply. The gating is rate-agnostic — on an 800 Hz
+gyro with position at 50 Hz it is 1:16, with no code change — and `dt_position` remains
+the true interval between the two samples the error was measured across. A fixed
+divider would not survive that, because its `dt` would drift against real arrivals.
+
+| stage | runs at | gate |
+|---|---|---|
+| position → acceleration → collective | position rate | `freshness.position_new` |
+| attitude-error derivative | attitude rate | `freshness.attitude_new` |
+| rate loop → torque | gyro rate | every cycle |
+
+The framework once carried an optional second work item (`OuterLoop`) that moved the
+trajectory stage to `nav_and_controllers` behind a `hasOuterStage()` opt-in. No shipped
+law ever opted in, so it woke at position rate purely to return immediately, and it was
+removed along with its four virtuals and the cross-thread contract they required. If a
+future law genuinely needs the split — an outer stage too expensive for the gyro path —
+it is reintroducible, but freshness gating is the cheap answer and should be tried first.
 
 ## Rules that will bite you
 
@@ -230,16 +264,16 @@ You do not reimplement, and must not fight, any of this:
 | two-stage failsafe (200 ms last-valid, then blind descend) | `CommandFrontEnd` |
 | EKF reset application to setpoints | `CommandFrontEnd` |
 | velocity notch / low-pass filter chain | `VehicleStateProvider` |
+| position/velocity PD, position integrator, lateral clamp, collective | `TrajectoryStage`, if you opt in |
 | stick → attitude and stick → rate mapping | `src/lib/mc_manual_mapping` |
 | hover-thrust estimate, throttle slews, spool-up gating | front end + state provider |
 | battery scaling, NaN guard, watchdog, fallback latch | output stage |
-| `vehicle_attitude_setpoint` / `vehicle_rates_setpoint` / `vehicle_local_position_setpoint` publication | output stage + `OuterLoop` |
+| `vehicle_attitude_setpoint` / `vehicle_rates_setpoint` / `vehicle_local_position_setpoint` publication | output stage |
 
 Publication is **level-gated to match stock exactly**: a topic is published only
 in the modes where the stock module that owns it actually runs, and only by the
 work item that generated it. `vehicle_local_position_setpoint` therefore appears
-only at `Trajectory` level, from `OuterLoop` when the outer stage is active and
-from the output stage otherwise. Getting this wrong does not disturb flight — it
+only at `Trajectory` level, from the output stage. Getting this wrong does not disturb flight — it
 feeds the flight tasks a stale reset origin and makes log analysis lie (it
 produced a phantom 12× altitude-tracking regression; see Stage 12 in the smoke
 log).

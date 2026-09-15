@@ -33,3 +33,14 @@ uint32 update_count		# controller updates since start
 uint32 invalid_output_count	# updates rejected by the output stage
 
 float32[8] debug		# free-form, meaning defined by the active controller
+
+# Command-frame torque rotation (MC_SEAT_*), filled by the eigen law. Named to match the
+# level-1 log keys in examples/utils/eigen_controller.py so the two rungs of the
+# simulation ladder can be compared without renaming anything.
+float32 seat_theta		# [rad] rotation applied to the roll/pitch torque, 0 when disabled
+float32 seat_alpha		# [rad] measured misalignment driving it, NaN while gated
+
+float32 pole_theta_b	# [rad] adaptive pole-angle offset (MC_POLE_*), 0 when disabled
+float32 pole_alpha_b	# [rad] misalignment driving it, NaN while gated
+float32 pole_theta_hat	# [rad] converged estimate, dither excluded (MC_POLE_EN=2)
+float32 pole_cost	# [rad] |lateral direction error| being minimised, NaN while gated

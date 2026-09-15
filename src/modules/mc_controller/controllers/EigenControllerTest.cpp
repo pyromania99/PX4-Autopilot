@@ -450,6 +450,48 @@ TEST_F(EigenControllerTest, TiltIsResolvedAgainstTheCurrentHeading)
 }
 
 /**
+ * The same resolution, on the cycles between two position samples - which at 250 Hz gyro and
+ * 125 Hz position is every other one.
+ *
+ * The NED acceleration demand is a position-stage quantity and is correctly held. The
+ * heading it is resolved against is not: the sin/cos pair in the inversion IS the rotation
+ * from NED into the heading-aligned frame, so holding a stale heading rotates the commanded
+ * roll/pitch pair by r*dt_position and the angle PD then chases that rotation. It is
+ * invisible in hover and a standing roll/pitch cross-coupling under spin.
+ */
+TEST_F(EigenControllerTest, TiltIsReResolvedAgainstHeadingBetweenPositionSamples)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp = state.position + Vector3f(10.f, 0.f, 0.f);
+
+	// Facing north: a north demand is pure nose-down pitch.
+	ControllerOutput first{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, first));
+	const Eulerf first_sp(first.attitude_setpoint);
+	ASSERT_NEAR(first_sp.theta(), -(0.5f * 10.f) / CONSTANTS_ONE_G, 1e-4f);
+	ASSERT_NEAR(first_sp.phi(), 0.f, 1e-6f);
+
+	// Next gyro cycle: yawed to face east, no new position sample. The demand in NED has not
+	// changed, but where it lands on the airframe has: it is now off the left wing.
+	state.q = Quatf(Eulerf(0.f, 0.f, M_PI_2_F));
+	state.heading = M_PI_2_F;
+	state.freshness.position_new = false;
+
+	ControllerOutput second{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, second));
+	const Eulerf second_sp(second.attitude_setpoint);
+
+	EXPECT_NEAR(second_sp.phi(), -(0.5f * 10.f) / CONSTANTS_ONE_G, 1e-4f);
+	EXPECT_NEAR(second_sp.theta(), 0.f, 1e-4f);
+
+	// And the setpoint keeps pointing where it did in NED - the tilt magnitude is the
+	// position stage's answer, unchanged by a rotation of the vehicle underneath it.
+	EXPECT_NEAR(sqrtf(second_sp.phi() * second_sp.phi() + second_sp.theta() * second_sp.theta()),
+		    sqrtf(first_sp.phi() * first_sp.phi() + first_sp.theta() * first_sp.theta()), 1e-5f);
+}
+
+/**
  * Damping acts on the estimator velocity, not on a derivative of the position error. At the
  * setpoint but moving north, the vehicle must pitch back to arrest itself.
  */
@@ -673,7 +715,6 @@ TEST_F(EigenControllerTest, DeclaresFullStackSupport)
 	EXPECT_TRUE(_controller->supportsLevel(ControlLevel::Trajectory));
 	EXPECT_TRUE(_controller->supportsLevel(ControlLevel::Attitude));
 	EXPECT_TRUE(_controller->supportsLevel(ControlLevel::BodyRate));
-	EXPECT_FALSE(_controller->hasOuterStage());
 	EXPECT_STREQ(_controller->name(), "eigen");
 }
 

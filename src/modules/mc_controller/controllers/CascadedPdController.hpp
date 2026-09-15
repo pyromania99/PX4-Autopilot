@@ -62,6 +62,7 @@
 #pragma once
 
 #include <MulticopterControllerBase.hpp>
+#include <TrajectoryStage.hpp>
 
 #include <uORB/topics/rate_ctrl_status.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -80,14 +81,6 @@ public:
 	bool update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 		    float dt, mc_ctrl::ControllerOutput &output) override;
 
-	/**
-	 * Single work queue. hasOuterStage() exists for trajectory stages too heavy for
-	 * the gyro-rate queue; this one is a few dozen flops, so paying for the
-	 * cross-queue state-partitioning contract buys nothing. The position stage still
-	 * runs at position rate because update() gates it on state.freshness.position_new
-	 * and feeds it state.freshness.dt_position.
-	 */
-	bool hasOuterStage() const override { return false; }
 
 	void fillLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const override
 	{
@@ -118,9 +111,10 @@ protected:
 	void updateParams() override;
 
 private:
-	/// Stages 1+2: position/velocity PD -> desired acceleration -> R_des + collective.
-	/// Writes _attitude_setpoint and _thrust_setpoint.
-	void stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
+	/// Stages 1+2-magnitude: position/velocity PD -> desired acceleration -> desired body-z
+	/// direction + collective. Writes _body_z_setpoint and _thrust_setpoint. Stops short of
+	/// R_des on purpose - see _body_z_setpoint.
+	void stepTrajectoryToBodyZ(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command);
 
 	/// Stage 2, shared by the Trajectory and Attitude levels: a desired body-z
 	/// direction plus the *current* heading becomes R_des.
@@ -133,19 +127,38 @@ private:
 	// Cached across cycles: the trajectory stage runs at position rate, the rest at
 	// gyro rate.
 	matrix::Quatf _attitude_setpoint{};
+
+	/**
+	 * Desired body-z direction in NED, the heading-INDEPENDENT half of R_des.
+	 *
+	 * The split exists so the two halves can run at their own rates. This vector is a
+	 * function of the position estimate, so it is refreshed at position rate and held in
+	 * between - correctly, since nothing about it has changed. The heading is a function of
+	 * the attitude estimate, which arrives at gyro rate, so R_des is rebuilt from this
+	 * vector on EVERY cycle in update(). Holding the heading as well would drag the whole
+	 * reference frame r*dt_position behind the vehicle and feed that lag to the geometric
+	 * error as roll and pitch. See TrajectoryStage::currentHeading().
+	 */
+	matrix::Vector3f _body_z_setpoint{0.f, 0.f, 1.f};
+
 	matrix::Vector3f _thrust_setpoint{};
 	matrix::Vector3f _rate_setpoint{};
 	matrix::Vector3f _autotune_rate_sp{};
 
-	/// Telemetry only, for vehicle_local_position_setpoint.
-	matrix::Vector3f _position_setpoint{NAN, NAN, NAN};
-	matrix::Vector3f _velocity_setpoint{NAN, NAN, NAN};
-	matrix::Vector3f _acceleration_setpoint{NAN, NAN, NAN};
-
 	/// Last attitude error, for mc_controller_status.debug[].
 	matrix::Vector3f _attitude_error{};
 
-	bool _position_stage_valid{false};
+	/**
+	 * Stages 1 and 2-magnitude, shared with the other laws in this module: the per-axis
+	 * PD, the position integrator, the lateral clamp and the collective. Opting in is
+	 * composition - holding one of these and delegating - so opting out would mean simply
+	 * not having it, as TemplateController does.
+	 *
+	 * A ModuleParams child, so its own gains refresh through the same cascade this
+	 * controller does. It runs inline in update() on the rate_ctrl queue, gated on
+	 * state.freshness.position_new so it keeps position rate rather than gyro rate.
+	 */
+	TrajectoryStage _trajectory_stage;
 
 	// Cached gains, so update() never touches the parameter system.
 	matrix::Vector3f _pos_p{};	///< [1/s^2] (MC_PD_XY_P, MC_PD_XY_P, MC_PD_Z_P)

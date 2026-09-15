@@ -44,31 +44,25 @@ flowchart TB
 ```mermaid
 flowchart TB
     FMM2["flight_mode_manager<br/>unchanged — still the setpoint generator"]
-    OUTER["mc_controller_outer<br/>125 Hz · nav_and_controllers<br/>own state + command · controller-&gt;updateOuter()<br/><i>only if hasOuterStage()</i>"]
     MC["mc_controller<br/>250 Hz gyro · rate_ctrl<br/>state + command + control law + output stage"]
     CA2["control_allocator<br/>unchanged"]
     MIX2["MixingOutput → ESCs"]
-    FMM2 -->|trajectory_setpoint| OUTER
     FMM2 -->|trajectory_setpoint| MC
-    OUTER -->|vehicle_attitude_setpoint| MC
     MC -->|torque + thrust| CA2
     CA2 -->|actuator_motors| MIX2
 ```
 
-**Work-queue placement** (Stage 12 restored stock's separation, opt-in per
-controller via `hasOuterStage()`):
+**Work-queue placement** — one item, with stage-rate parity from freshness gating:
 
 | | `rate_ctrl` (high priority) | `nav_and_controllers` |
 |---|---|---|
 | stock | `mc_rate_control` 250 Hz | `mc_att_control` 250 Hz, `mc_pos_control` 125 Hz |
-| framework, split | `mc_controller` 250 Hz | `mc_controller_outer` 125 Hz |
-| framework, monolithic | `mc_controller` 250 Hz — *whole law* | idle |
+| framework | `mc_controller` gyro rate — *whole law* | — |
 
-A monolithic controller keeps `hasOuterStage()` false and runs entirely on
-`rate_ctrl`, because a law whose stages share state cannot be cut across two
-threads. `updateOuter()` and `update()` run **concurrently on the same object**
-and must touch disjoint members; everything that crosses goes through the
-published `vehicle_attitude_setpoint`.
+`update()` is entered every gyro cycle, but each stage gates on its own freshness
+flag, so position math runs at position rate and the attitude derivative at attitude
+rate. Stage 12's optional `OuterLoop` work item, which split the trajectory stage onto
+`nav_and_controllers` behind `hasOuterStage()`, was removed after no law ever opted in.
 
 > **Two real behavioural differences from stock.**
 >
@@ -157,7 +151,6 @@ flowchart LR
 | `CommandFrontEnd/` | new | Normalises RC / mission / offboard into one command tagged with a control level, and owns the safety policy: takeoff ramp, two-stage failsafe, EKF-reset application, on-ground override, limit envelope. |
 | `controllers/` | new | Reference cascade (wraps the stock laws — the A/B baseline), a template to copy, and the `MC_CTRL_ALG` switch. |
 | `MulticopterController.cpp` | new | The module and the inner work item. Drains 15 subscriptions, runs the pipeline at gyro rate, and owns the output stage — the real safety boundary. |
-| `OuterLoop.cpp` | new | Second work item on `nav_and_controllers`, driven by `vehicle_local_position`, active only when the controller reports `hasOuterStage()`. Restores stock's queue separation so heavy trajectory math stays off the gyro path. Owns its **own** state provider and front end — sharing them with the inner item would be a cross-queue data race. |
 | `msg/McControllerStatus.msg` | new | Diagnostics: algorithm, control level, fallback state and reason, per-stage `dt`, invalid-output counter, free `debug[8]`. |
 | `mc_att_control` | mod | Stick→attitude mapping deleted, replaced by a call into the shared library. Behaviour unchanged — proven bit-for-bit. |
 | `mc_rate_control` | mod | Same for the Acro mapping. Together these two edits are **−205 / +19 lines**: a pure relocation. |
@@ -181,12 +174,9 @@ flowchart TB
     B --> C["VehicleStateProvider<br/>filters · EKF reset deltas · per-stage dt"]
     C --> D{"resolveLevel<br/>from vehicle_control_mode"}
     D -->|None| Z["publish nothing · endCycle"]
-    D -->|Trajectory| T{"outer stage<br/>active?"}
-    T -->|"yes — split"| TS["consume published attitude_sp<br/>outer_stage_complete = true"]
-    T -->|"no — monolithic"| TI["setpoint + failsafe + takeoff ramp<br/>EKF resets · limit envelope"]
+    D -->|Trajectory| TI["setpoint + failsafe + takeoff ramp<br/>EKF resets · limit envelope"]
     D -->|Attitude| AT["sticks → StickToAttitudeSetpoint<br/>or consume external setpoint"]
     D -->|BodyRate| BR["sticks → StickToRateSetpoint<br/>or external · NaN axes → measured rate"]
-    TS --> E
     TI --> E
     AT --> E
     BR --> E["controller→update state command dt output"]
@@ -201,18 +191,6 @@ flowchart TB
     J --> K["endCycle — clear one-shot flags"]
 ```
 
-And, concurrently, when the controller opts into the outer stage:
-
-```mermaid
-flowchart TB
-    A2["vehicle_local_position callback · 125 Hz · nav_and_controllers"] --> B2["own VehicleStateProvider<br/>+ setTimestampSample — position-driven, not gyro-driven"]
-    B2 --> C2["own CommandFrontEnd — trajectory path<br/>failsafe · takeoff ramp · EKF resets · limits"]
-    C2 --> D2{"level ==<br/>Trajectory?"}
-    D2 -->|no| Z2["publish nothing · inner item owns the command"]
-    D2 -->|yes| E2["controller→updateOuter → vehicle_attitude_setpoint"]
-    E2 --> F2["publish attitude_sp<br/>+ local_position_setpoint + takeoff_status"]
-```
-
 The fallback latch is **sticky for the whole armed period**, cleared only on the
 disarm transition. A NaN means corrupted internal state; retrying next cycle would
 produce a limit cycle alternating between garbage and fallback.
@@ -220,8 +198,7 @@ produce a limit cycle alternating between garbage and fallback.
 **Publication is level-gated to mirror stock.** Each intermediate topic is
 published only in the modes where the stock module owning it actually runs, and
 only by the item that generated it — `vehicle_local_position_setpoint` at
-`Trajectory` only, from `OuterLoop` when split and from the output stage when
-monolithic. Stage 12 found this ungated: the framework published a held position
+`Trajectory` only, from the output stage. Stage 12 found this ungated: the framework published a held position
 setpoint through Stabilized, which flight tasks read as a stale reset origin and
 which faked a 12× altitude-tracking regression in log analysis.
 
@@ -307,4 +284,3 @@ Final state: **161/161 tests pass**, both builds clean, `MC_CTRL_ALG` defaults t
 | Acro / BodyRate in flight | Deliberately skipped — scripted acro has high crash risk and the mapping is already proven bit-exact | Fly it manually |
 | Armed `actuator_motors` rate | The 10 Hz measured was the logger's downsample, not the publication rate | `uorb top` while armed |
 | Inner-loop cycle time | **Not measurable in SITL** — every `PC_ELAPSED` counter reports `0us elapsed`, for the stock modules too | Hardware only: `perf` → `mc_controller: cycle` against the 2.5 ms budget at `IMU_GYRO_RATEMAX=400` |
-| Outer-stage concurrency | The disjoint-state contract between `updateOuter()` and `update()` is enforced by review, not by the compiler | No shipped controller opts in today; audit any new controller that does |

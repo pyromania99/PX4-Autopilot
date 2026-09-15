@@ -20,7 +20,6 @@
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
  * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
  * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
  * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
  * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
@@ -123,7 +122,8 @@ Quatf bodyzToAttitude(Vector3f body_z, const float yaw_sp)
 } // namespace
 
 CascadedPdController::CascadedPdController(ModuleParams *parent) :
-	MulticopterControllerBase(parent)
+	MulticopterControllerBase(parent),
+	_trajectory_stage(this)
 {
 	CascadedPdController::updateParams();
 	CascadedPdController::reset();
@@ -152,18 +152,17 @@ void CascadedPdController::updateParams()
 
 void CascadedPdController::reset()
 {
-	// No integrators and no filters, so a reset is just dropping the cached stage
-	// outputs. _position_stage_valid is what stops a stale attitude setpoint from the
-	// previous mode being commanded before the position stage has run once.
+	// The inner loop has no integrators and no filters, so a reset here is just dropping
+	// the cached stage outputs. The shared stage's validity flag is what stops a stale
+	// attitude setpoint from the previous mode being commanded before the position stage
+	// has run once; its full reset() also drops the position integrator.
 	_attitude_setpoint = Quatf();
+	_body_z_setpoint = Vector3f(0.f, 0.f, 1.f);
 	_thrust_setpoint.setZero();
 	_rate_setpoint.setZero();
 	_autotune_rate_sp.setZero();
 	_attitude_error.setZero();
-	_position_setpoint = Vector3f(NAN, NAN, NAN);
-	_velocity_setpoint = Vector3f(NAN, NAN, NAN);
-	_acceleration_setpoint = Vector3f(NAN, NAN, NAN);
-	_position_stage_valid = false;
+	_trajectory_stage.reset();
 }
 
 void CascadedPdController::bodyzToAttitudeSetpoint(Vector3f body_z, const mc_ctrl::ControllerState &state,
@@ -188,64 +187,32 @@ void CascadedPdController::bodyzToAttitudeSetpoint(Vector3f body_z, const mc_ctr
 	// say at all.
 	limitTilt(body_z, Vector3f(0.f, 0.f, 1.f), tilt_limit);
 
-	// THE heading decision: state.heading, not command.yaw_sp. R_des is rebuilt around
-	// wherever the vehicle is pointing right now, so a heading error can never appear
+	// THE heading decision: the vehicle's own heading, not command.yaw_sp. R_des is rebuilt
+	// around wherever the vehicle is pointing right now, so a heading error can never appear
 	// and the yaw axis never sees a proportional term. See the file comment.
-	const float heading = PX4_ISFINITE(state.heading) ? state.heading : 0.f;
-
-	_attitude_setpoint = bodyzToAttitude(body_z, heading);
+	//
+	// Taken from state.q via the shared helper, not from state.heading: the two are the same
+	// angle but state.heading is only as fresh as the EKF2 fusion step, and this call site is
+	// what makes its age a control error rather than a telemetry detail. See
+	// TrajectoryStage::currentHeading().
+	_attitude_setpoint = bodyzToAttitude(body_z, TrajectoryStage::currentHeading(state));
 }
 
-void CascadedPdController::stepTrajectoryToAttitude(const mc_ctrl::ControllerState &state,
+void CascadedPdController::stepTrajectoryToBodyZ(const mc_ctrl::ControllerState &state,
 		const mc_ctrl::ControllerCommand &command)
 {
-	// Stage 1: PD on position, damped by the filtered EKF velocity rather than by a
-	// numerical derivative of the error - the setpoint steps that flight_mode_manager
-	// emits on every mode change would otherwise differentiate into a torque spike.
+	// Stage 1 and the lateral clamp live in the shared trajectory stage: they were
+	// identical across every law in this module, and that is now where the position
+	// integrator lives too. The gains stay here - MC_PD_* is this law's own tuning, and its
+	// vertical defaults differ from the eigen law's.
 	//
-	// An unset (NaN) axis contributes no error rather than poisoning the sum, which is
-	// how a velocity-only or altitude-only mode ends up controlling only what it asked
-	// for. Note there is no integrator anywhere in this controller: steady wind leaves a
-	// steady position offset, by design.
-	Vector3f acceleration_sp{};
-
-	for (int i = 0; i < 3; i++) {
-		const bool have_position = PX4_ISFINITE(command.position_sp(i)) && PX4_ISFINITE(state.position(i));
-		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && PX4_ISFINITE(state.velocity(i));
-
-		const float position_error = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
-
-		// With no velocity setpoint the D term damps absolute velocity, which is the
-		// same thing with v_sp == 0.
-		float velocity_error = 0.f;
-
-		if (have_velocity) {
-			velocity_error = command.velocity_sp(i) - state.velocity(i);
-
-		} else if (PX4_ISFINITE(state.velocity(i))) {
-			velocity_error = -state.velocity(i);
-		}
-
-		acceleration_sp(i) = _pos_p(i) * position_error + _pos_d(i) * velocity_error;
-
-		if (PX4_ISFINITE(command.acceleration_sp(i))) {
-			acceleration_sp(i) += command.acceleration_sp(i);
-		}
-	}
-
-	// Bound the lateral demand by what the tilt limit can actually deliver, before it
-	// reaches the attitude construction. g*tan(tilt) is the horizontal acceleration a
-	// vehicle at that tilt produces while holding altitude.
-	const float tilt_limit = PX4_ISFINITE(command.tilt_limit) ? command.tilt_limit : kDefaultTiltLimit;
-	const float max_lateral_acceleration = CONSTANTS_ONE_G * tanf(math::min(tilt_limit, math::radians(80.f)));
-	const Vector2f lateral_acceleration(acceleration_sp);
-	const float lateral_norm = lateral_acceleration.norm();
-
-	if (lateral_norm > max_lateral_acceleration && lateral_norm > FLT_EPSILON) {
-		const Vector2f limited = lateral_acceleration * (max_lateral_acceleration / lateral_norm);
-		acceleration_sp(0) = limited(0);
-		acceleration_sp(1) = limited(1);
-	}
+	// bodyzToAttitudeSetpoint() re-derives the tilt limit for its own exact directional
+	// clamp, so nothing here needs it.
+	//
+	// This function deliberately stops short of R_des. Everything it computes depends on the
+	// position estimate and is therefore only worth recomputing at position rate; the heading
+	// R_des is anchored on is not, and update() re-applies that every cycle.
+	const Vector3f acceleration_sp = _trajectory_stage.computeAccelerationSetpoint(state, command, _pos_p, _pos_d);
 
 	// Stage 2, direction: the specific force the vehicle must produce is
 	// a_des - g_ned, and body z (FRD, pointing down) is the negative of that.
@@ -267,31 +234,12 @@ void CascadedPdController::stepTrajectoryToAttitude(const mc_ctrl::ControllerSta
 	// Decoupled, both cases keep the vehicle level and let the collective saturate low,
 	// which is the answer the physics actually supports. The vertical channel is not
 	// lost - it reaches the collective through thrust_ned_z below, exactly as stock.
-	const Vector3f body_z(-acceleration_sp(0), -acceleration_sp(1), CONSTANTS_ONE_G);
-	bodyzToAttitudeSetpoint(body_z, state, command);
+	_body_z_setpoint = Vector3f(-acceleration_sp(0), -acceleration_sp(1), CONSTANTS_ONE_G);
 
-	// Stage 2, magnitude: normalized, not Newtons. The hover thrust estimate stands in
-	// for the mass/gravity product the Isaac Sim prototype knew exactly - hover thrust
-	// is by definition what produces 1 g.
-	const float thrust_ned_z = acceleration_sp(2) * (state.hover_thrust / CONSTANTS_ONE_G) - state.hover_thrust;
-
-	// Project onto the CURRENT attitude, not the desired one: while the vehicle is still
-	// rotating toward R_des it is the present tilt that decides how much of the
-	// collective ends up vertical.
-	const float cos_tilt = Dcmf(state.q)(2, 2);
-	float collective = thrust_ned_z;
-
-	if (cos_tilt > 0.1f) {
-		collective = thrust_ned_z / cos_tilt;
-	}
-
-	_thrust_setpoint = Vector3f(0.f, 0.f,
-				    math::constrain(collective, -command.thrust_max, -command.thrust_min));
-
-	_position_setpoint = command.position_sp;
-	_velocity_setpoint = command.velocity_sp;
-	_acceleration_setpoint = acceleration_sp;
-	_position_stage_valid = true;
+	// Stage 2, magnitude: moved to the shared stage verbatim. This law's version was the
+	// one the other laws adopted, so nothing here changes - same derivation, same signed
+	// cos(tilt) gated at 0.1, same clamp.
+	_thrust_setpoint = _trajectory_stage.computeThrustSetpoint(state, command, acceleration_sp);
 }
 
 Vector3f CascadedPdController::attitudeToRateSetpoint(const Quatf &q)
@@ -324,21 +272,33 @@ Vector3f CascadedPdController::attitudeToRateSetpoint(const Quatf &q)
 bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 				  float dt, mc_ctrl::ControllerOutput &output)
 {
-	// HARD CONTRACT from the interface. There is nothing to unwind in a PD law, but the
-	// cached stage outputs are dropped so a mode change cannot carry a stale attitude
-	// setpoint across.
+	// HARD CONTRACT from the interface. The shared stage's position integrator is the one
+	// thing here that genuinely winds up, and zeroing it on the ground is what keeps the
+	// vehicle from leaping at takeoff. The cached stage outputs go too, so a mode change
+	// cannot carry a stale attitude setpoint across.
 	if (command.reset_integrals || !state.armed) {
 		_rate_setpoint.setZero();
-		_position_stage_valid = false;
+		_trajectory_stage.resetIntegral();
+		_trajectory_stage.invalidateStage();
 	}
 
 	switch (command.level) {
 	case mc_ctrl::ControlLevel::Trajectory: {
 			// Gated on a fresh local position sample so the position stage keeps
 			// mc_pos_control's cadence instead of being pulled up to gyro rate.
-			if (state.freshness.position_new || !_position_stage_valid) {
-				stepTrajectoryToAttitude(state, command);
+			if (state.freshness.position_new || !_trajectory_stage.stageValid()) {
+				stepTrajectoryToBodyZ(state, command);
 			}
+
+			// R_des is rebuilt EVERY cycle, deliberately outside the gate above. The
+			// tilt direction it is built from is a position-stage quantity and is
+			// correctly held between position samples; the heading it is anchored on
+			// is not. Holding the heading too would freeze the whole reference frame
+			// for the duration of a position interval while the vehicle keeps
+			// rotating - a stale-frame error of r*dt_position that the geometric
+			// error then reads as roll and pitch to correct. Rebuilding costs one
+			// normalize, one acos and a handful of trig at gyro rate.
+			bodyzToAttitudeSetpoint(_body_z_setpoint, state, command);
 
 			_rate_setpoint = attitudeToRateSetpoint(state.q);
 			break;
@@ -353,7 +313,7 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 
 			_thrust_setpoint = command.thrust_body_sp;
 			_rate_setpoint = attitudeToRateSetpoint(state.q);
-			_position_stage_valid = false;
+			_trajectory_stage.invalidateStage();
 			break;
 		}
 
@@ -364,7 +324,7 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 		_thrust_setpoint = command.thrust_body_sp;
 		_attitude_setpoint = Quatf(NAN, NAN, NAN, NAN);
 		_attitude_error.setZero();
-		_position_stage_valid = false;
+		_trajectory_stage.invalidateStage();
 		break;
 
 	case mc_ctrl::ControlLevel::None:
@@ -401,23 +361,9 @@ void CascadedPdController::getLocalPositionSetpoint(vehicle_local_position_setpo
 {
 	// Telemetry only. Stock fills this from PositionControl's internal setpoints; here
 	// it comes from what the PD stage actually used, so a log still shows what was asked
-	// for versus what was flown.
-	sp.x = _position_setpoint(0);
-	sp.y = _position_setpoint(1);
-	sp.z = _position_setpoint(2);
-	sp.vx = _velocity_setpoint(0);
-	sp.vy = _velocity_setpoint(1);
-	sp.vz = _velocity_setpoint(2);
-	_acceleration_setpoint.copyTo(sp.acceleration);
-
-	// NED thrust, matching PositionControl::getLocalPositionSetpoint().
-	const Dcmf R_sp(_attitude_setpoint);
-	const Vector3f thrust_ned = R_sp * _thrust_setpoint;
-	thrust_ned.copyTo(sp.thrust);
-
-	// yaw is not controlled, so there is no yaw setpoint to report.
-	sp.yaw = NAN;
-	sp.yawspeed = NAN;
+	// for versus what was flown. The attitude and thrust setpoints are this law's own, so
+	// the stage cannot source them itself.
+	_trajectory_stage.fillLocalPositionSetpoint(sp, _attitude_setpoint, _thrust_setpoint);
 }
 
 void CascadedPdController::fillStatus(mc_controller_status_s &status) const
@@ -429,5 +375,5 @@ void CascadedPdController::fillStatus(mc_controller_status_s &status) const
 	status.debug[4] = _rate_setpoint(1);
 	status.debug[5] = _rate_setpoint(2);
 	status.debug[6] = _thrust_setpoint(2);
-	status.debug[7] = _position_stage_valid ? 1.f : 0.f;
+	status.debug[7] = _trajectory_stage.stageValid() ? 1.f : 0.f;
 }

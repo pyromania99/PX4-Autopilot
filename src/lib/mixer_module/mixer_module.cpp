@@ -448,7 +448,7 @@ bool MixingOutput::update()
 		if (prev_kill_switch_2 != _manual_switches.kill_switch_2 && _manual_switches.kill_switch_2 == manual_control_switches_s::SWITCH_POS_ON)  {
 			PX4_INFO("_max_num_outputs = %d", _max_num_outputs);  // Add this line
 			j = rand() % 4;
-			j = (j==2) ? 7 : j;
+			j = j+4;
 			PX4_INFO("Kill switch 2 changed: %d -> %d,  j = %d", prev_kill_switch_2, _manual_switches.kill_switch_2, j);
 		}
 		prev_kill_switch_2 = _manual_switches.kill_switch_2;
