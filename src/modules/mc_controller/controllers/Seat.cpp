@@ -120,6 +120,18 @@ Vector3f Seat::apply(const Vector3f &torque, const Vector2f &xd, const Vector2f 
 	return out;	// out(2), yaw, is never rotated
 }
 
+float Seat::measure(const Vector2f &xd, const Vector2f &xa)
+{
+	if (!xd.isAllFinite() || !xa.isAllFinite()
+	    || (xd.norm() <= kEpsAngle) || (xa.norm() <= kEpsAngle)) {
+		return NAN;
+	}
+
+	// cross = |xd||xa| sin(alpha), dot = |xd||xa| cos(alpha).
+	return atan2f(xd(0) * xa(1) - xd(1) * xa(0),
+		      xd(0) * xa(0) + xd(1) * xa(1));
+}
+
 void Seat::adapt(const Vector2f &xd, const Vector2f &xa, float r, float dt)
 {
 	_alpha = NAN;
@@ -131,18 +143,15 @@ void Seat::adapt(const Vector2f &xd, const Vector2f &xa, float r, float dt)
 		return;
 	}
 
-	// cross = |xd||xa| sin(alpha), dot = |xd||xa| cos(alpha).
+	// cross = |xd||xa| sin(alpha); the cos partner lives in measure(), which is where
+	// the angle is now formed.
 	const float cross = xd(0) * xa(1) - xd(1) * xa(0);
-	const float dot = xd(0) * xa(0) + xd(1) * xa(1);
 
 	// Recorded for BOTH laws, because it is the diagnostic that says whether the
 	// channel carries any direction at all: |alpha| sitting at pi/2 means the pair is
 	// uncorrelated and the seat is running on noise. It only DRIVES the angle law.
-	const bool measurable = (xd.norm() > kEpsAngle) && (xa.norm() > kEpsAngle);
-
-	if (measurable) {
-		_alpha = atan2f(cross, dot);
-	}
+	_alpha = measure(xd, xa);
+	const bool measurable = PX4_ISFINITE(_alpha);
 
 	float step;
 

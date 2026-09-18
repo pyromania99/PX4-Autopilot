@@ -38,7 +38,8 @@ float32[8] debug		# free-form, meaning defined by the active controller
 # level-1 log keys in examples/utils/eigen_controller.py so the two rungs of the
 # simulation ladder can be compared without renaming anything.
 float32 seat_theta		# [rad] rotation applied to the roll/pitch torque, 0 when disabled
-float32 seat_alpha		# [rad] measured misalignment driving it, NaN while gated
+float32 seat_alpha		# [rad] MEASURED misalignment, filled on every arm including seat off
+float32 seat_stepped		# 1 = the law stepped this tick, 0 = gated, NaN = no law running
 
 float32 pole_theta_b	# [rad] adaptive pole-angle offset (MC_POLE_*), 0 when disabled
 float32 pole_alpha_b	# [rad] misalignment driving it, NaN while gated

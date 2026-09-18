@@ -182,6 +182,8 @@ private:
 	float _seat_saturated{0.f};
 	float _seat_xd_norm{0.f};
 	float _seat_xa_norm{0.f};
+	float _seat_alpha_meas{NAN};	///< [rad] misalignment, measured on EVERY arm
+	float _seat_stepped{NAN};	///< 1 = law stepped, 0 = gated, NAN = no law running
 
 	/// Last roll/pitch angle error, for mc_controller_status.debug[].
 	matrix::Vector2f _attitude_error{};

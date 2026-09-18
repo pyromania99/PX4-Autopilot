@@ -152,6 +152,18 @@ public:
 	/// Misalignment measured on the last adapting tick [rad], NAN while gated.
 	float alpha() const { return _alpha; }
 
+	/**
+	 * The misalignment between a commanded and an achieved direction [rad], as a pure
+	 * function of the pair. NAN when either vector is too short to carry a direction.
+	 *
+	 * Stateless and mode-free ON PURPOSE. alpha() is the LAW's alpha: it is written
+	 * only on a tick that adapts, so it is NAN for the whole of a seat-OFF or
+	 * seat-FIXED flight - and logging that made the misalignment look unmeasurable on
+	 * exactly the arms you want to compare the seat against. This is the MEASUREMENT,
+	 * and the caller runs it on every arm. It applies nothing and decides nothing.
+	 */
+	static float measure(const matrix::Vector2f &xd, const matrix::Vector2f &xa);
+
 	/// Cached MC_SEAT_MODE, so a caller can skip the work entirely when disabled.
 	Mode mode() const { return _mode; }
 

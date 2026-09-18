@@ -418,7 +418,19 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	 * difference through a 2-pole low-pass at IMU_DGYRO_CUTOFF (20 Hz by default), so
 	 * it carries a phase of its own that the seat will read as part of the lag.
 	 */
-	if ((_seat.mode() != Seat::Mode::Off) || _pole.enabled()) {
+	/*
+	 * UNCONDITIONAL since 2026-09-17. This block used to be skipped entirely when the
+	 * seat was off and the pole disabled, which meant the misalignment alpha - the
+	 * quantity the seat exists to drive to zero - was never computed on the seat-OFF
+	 * arm. Every seat figure in experiments/ therefore had an empty OFF trace, and no
+	 * way to tell whether the seat reduced a misalignment that was there to begin with.
+	 *
+	 * Nothing in here applies anything: xd, xa and the alpha below are measurements,
+	 * and the two things that DO act - the pole adapter and _seat.apply() - keep their
+	 * own guards below. The cost is a handful of flops per tick on an arm that used to
+	 * skip them.
+	 */
+	{
 		const float p = state.angular_velocity(0);
 		const float q = state.angular_velocity(1);
 		const float r = state.angular_velocity(2);
@@ -433,6 +445,9 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 		_seat_saturated = _seat.saturated() ? 1.f : 0.f;
 		_seat_xd_norm = xd.norm();
 		_seat_xa_norm = xa.norm();
+		// The MEASUREMENT, on every arm. Not _seat.alpha(), which is written only on a
+		// tick that adapts and so is NAN for a whole seat-OFF or seat-FIXED flight.
+		_seat_alpha_meas = Seat::measure(xd, xa);
 
 		/*
 		 * The pole adapter reads the SAME achieved acceleration the seat does, but a
@@ -470,6 +485,9 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 
 		if (_seat.mode() != Seat::Mode::Off) {
 			_torque = _seat.apply(_torque, xd, xa, r, dt);
+			// 1 = the law stepped this tick, 0 = it was gated (saturated, below
+			// MC_SEAT_RMIN, or an unmeasurable pair). NAN = no law running.
+			_seat_stepped = PX4_ISFINITE(_seat.alpha()) ? 1.f : 0.f;
 		}
 	}
 
@@ -533,7 +551,8 @@ void EigenController::fillStatus(mc_controller_status_s &status) const
 	status.debug[6] = _seat_xd_norm;
 	status.debug[7] = _seat_xa_norm;
 	status.seat_theta = _seat.theta();
-	status.seat_alpha = _seat.alpha();
+	status.seat_alpha = _seat_alpha_meas;
+	status.seat_stepped = _seat_stepped;
 	status.pole_theta_b = _pole.thetaB();
 	status.pole_alpha_b = _pole.alphaB();
 	status.pole_theta_hat = _pole.thetaBHat();
