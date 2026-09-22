@@ -167,7 +167,11 @@ uint64_t takeOff(CommandFrontEnd &fe, uint64_t t, const vehicle_control_mode_s &
 
 		trajectory_setpoint_s sp{};
 		sp.timestamp = t;
-		sp.position[0] = sp.position[1] = NAN;
+		// Position hold on all three axes. This used to leave x and y wholly uncommanded,
+		// which no flight task emits and which the setpoint-validity check now rejects for
+		// the same reason stock's _inputValid() does - half a horizontal vector is not a
+		// setpoint - so the helper would have taken off on the failsafe path instead.
+		sp.position[0] = sp.position[1] = 0.f;
 		sp.position[2] = -5.f;
 		sp.velocity[0] = sp.velocity[1] = sp.velocity[2] = NAN;
 		sp.acceleration[0] = sp.acceleration[1] = sp.acceleration[2] = NAN;
@@ -338,6 +342,126 @@ TEST(CommandFrontEndTest, FailsafeBlindDescentWhenVerticalVelocityUnavailable)
 	EXPECT_NEAR(cmd.acceleration_sp(2), 0.3f, 1e-6f) << "a bit below hover thrust";
 }
 
+/**
+ * Stock refuses to fly a setpoint whose estimate has gone away and drops into the failsafe
+ * ladder (PositionControl::_inputValid()). Without that check the stage simply found a
+ * non-finite position, contributed no position error, and flew on velocity damping - a
+ * silent downgrade out of position hold with nothing published to say so.
+ */
+TEST(CommandFrontEndTest, PositionSetpointWithoutAPositionEstimateFailsafes)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	uint64_t t = takeOff(fe, 10000000, posctlMode());
+	fe.setControlMode(posctlMode());
+	fe.setTrajectorySetpoint(posSetpoint(t, 10.f, 20.f, -5.f));
+
+	CommandFrontEnd::Publications pubs;
+
+	// Sanity: with the estimate present this is an ordinary position hold.
+	const auto &held = fe.update(flyingState(t), t, pubs);
+	ASSERT_FLOAT_EQ(held.position_sp(0), 10.f);
+
+	// The EKF drops the horizontal solution. Same setpoint, still fresh.
+	t += 10000;
+	auto blind = flyingState(t);
+	blind.position(0) = blind.position(1) = NAN;
+	blind.position_valid_xy = false;
+	fe.setTrajectorySetpoint(posSetpoint(t, 10.f, 20.f, -5.f));
+
+	const auto &cmd = fe.update(blind, t, pubs);
+
+	EXPECT_FALSE(PX4_ISFINITE(cmd.position_sp(0))) << "must not keep commanding a position it cannot measure";
+	// The failsafe answer with a usable velocity estimate: stop and wait.
+	EXPECT_FLOAT_EQ(cmd.velocity_sp(0), 0.f);
+	EXPECT_FLOAT_EQ(cmd.velocity_sp(1), 0.f);
+}
+
+TEST(CommandFrontEndTest, HalfCommandedHorizontalPairIsRejected)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	uint64_t t = takeOff(fe, 10000000, posctlMode());
+	fe.setControlMode(posctlMode());
+
+	// x commanded, y not. The horizontal setpoint is controlled as a vector, so this is
+	// not a setpoint at all - stock's second _inputValid() rule.
+	trajectory_setpoint_s sp = posSetpoint(t, 10.f, 20.f, -5.f);
+	sp.position[1] = NAN;
+	fe.setTrajectorySetpoint(sp);
+
+	CommandFrontEnd::Publications pubs;
+	const auto &cmd = fe.update(flyingState(t), t, pubs);
+
+	// Rejected whole, not patched up: what gets flown is the last setpoint that passed,
+	// which takeOff() left holding the origin. x == 10 would mean the broken one was used.
+	EXPECT_FLOAT_EQ(cmd.position_sp(0), 0.f) << "the whole setpoint is rejected, not just the missing half";
+	EXPECT_FLOAT_EQ(cmd.position_sp(1), 0.f);
+
+	// Past the 200 ms fallback window the ladder runs out and the failsafe takes over.
+	t += 300_ms;
+	sp.timestamp = t;
+	fe.setTrajectorySetpoint(sp);
+	const auto &later = fe.update(flyingState(t), t, pubs);
+
+	EXPECT_FALSE(PX4_ISFINITE(later.position_sp(0)));
+	EXPECT_FLOAT_EQ(later.velocity_sp(0), 0.f) << "failsafe: stop and wait";
+}
+
+TEST(CommandFrontEndTest, AltitudeModeSetpointWithoutAHorizontalEstimateStaysValid)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	uint64_t t = takeOff(fe, 10000000, posctlMode());
+
+	auto altctl = posctlMode();
+	altctl.flag_control_position_enabled = false;
+	altctl.flag_control_velocity_enabled = false;
+	fe.setControlMode(altctl);
+
+	// What FlightTaskManualAltitude publishes: stick tilt on x/y, altitude locked on z, and
+	// no horizontal estimate at all - which is the usual reason to be in this mode. Nothing
+	// here is commanded in a quantity the estimator cannot supply, so it must fly.
+	trajectory_setpoint_s sp{};
+	sp.timestamp = t;
+	sp.position[0] = sp.position[1] = NAN;
+	sp.position[2] = -5.f;
+	sp.velocity[0] = sp.velocity[1] = NAN;
+	sp.velocity[2] = 0.f;
+	sp.acceleration[0] = 1.5f;
+	sp.acceleration[1] = -0.5f;
+	sp.acceleration[2] = NAN;
+	sp.jerk[0] = sp.jerk[1] = sp.jerk[2] = NAN;
+	sp.yaw = NAN;
+	sp.yawspeed = 0.f;
+	fe.setTrajectorySetpoint(sp);
+
+	auto blind = flyingState(t);
+	blind.position(0) = blind.position(1) = NAN;
+	blind.velocity(0) = blind.velocity(1) = NAN;
+	blind.acceleration(0) = blind.acceleration(1) = NAN;
+	blind.position_valid_xy = false;
+	blind.velocity_valid_xy = false;
+
+	CommandFrontEnd::Publications pubs;
+	const auto &cmd = fe.update(blind, t, pubs);
+
+	EXPECT_FLOAT_EQ(cmd.acceleration_sp(0), 1.5f) << "the pilot's stick must still reach the controller";
+	EXPECT_FLOAT_EQ(cmd.position_sp(2), -5.f);
+}
+
 TEST(CommandFrontEndTest, EkfResetShiftsSetpointExactlyOnce)
 {
 	param_control_autosave(false);
@@ -392,6 +516,70 @@ TEST(CommandFrontEndTest, OnGroundOverrideCommandsNoThrustAndResetsIntegrals)
 	EXPECT_FLOAT_EQ(cmd.acceleration_sp(2), 100.f);
 	EXPECT_FALSE(PX4_ISFINITE(cmd.position_sp(0)));
 	EXPECT_TRUE(cmd.reset_integrals);
+}
+
+TEST(CommandFrontEndTest, TakeoffStateSurvivesAFlightSpentOutsideTrajectoryLevel)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	uint64_t t = 10000000;
+	auto mode = stabMode();
+	fe.setControlMode(mode);
+
+	manual_control_setpoint_s m{};
+	m.throttle = -0.5f;	// climbing away on the stick, as a Stabilized takeoff does
+	fe.setManualControlSetpoint(m);
+
+	CommandFrontEnd::Publications pubs;
+
+	// Take off and fly for 3 s without ever entering Trajectory level. The takeoff state
+	// machine only ticks inside buildTrajectoryCommand(), so unless the non-trajectory
+	// levels drive it too it is still sitting at ::disarmed when the pilot switches.
+	for (int i = 0; i < 750; i++) {
+		auto state = flyingState(t);
+		state.landed = (i < 5);
+		state.maybe_landed = (i < 5);
+		fe.update(state, t, pubs);
+		t += 4000;
+	}
+
+	EXPECT_EQ(fe.takeoffState(), TakeoffState::flight)
+			<< "an armed, airborne vehicle must not be held pre-takeoff by a mode that "
+			   "never runs the trajectory branch";
+
+	// Now switch to Altitude, hovering: altitude locked, no climb commanded, so nothing
+	// here would ever assert want_takeoff and release a stuck state machine.
+	auto altctl = posctlMode();
+	altctl.flag_control_position_enabled = false;
+	altctl.flag_control_velocity_enabled = false;
+	fe.setControlMode(altctl);
+
+	trajectory_setpoint_s sp{};
+	sp.timestamp = t;
+	sp.position[0] = sp.position[1] = NAN;
+	sp.position[2] = -5.f;
+	sp.velocity[0] = sp.velocity[1] = NAN;
+	sp.velocity[2] = 0.f;
+	sp.acceleration[0] = 1.f;	// stick tilt, and x/y always come as a pair
+	sp.acceleration[1] = 0.f;
+	sp.acceleration[2] = NAN;
+	sp.jerk[0] = sp.jerk[1] = sp.jerk[2] = NAN;
+	sp.yaw = NAN;
+	sp.yawspeed = 0.f;
+	fe.setTrajectorySetpoint(sp);
+
+	const auto &cmd = fe.update(flyingState(t), t, pubs);
+
+	ASSERT_EQ(cmd.level, ControlLevel::Trajectory);
+	// The regression: the on-ground override replacing the setpoint with the 100 m/s^2
+	// "make no thrust" sentinel, mid-air, on a Stabilized -> Altitude switch.
+	EXPECT_FALSE(PX4_ISFINITE(cmd.acceleration_sp(2)));
+	EXPECT_FLOAT_EQ(cmd.position_sp(2), -5.f);
+	EXPECT_GT(cmd.thrust_min, 0.f) << "thrust_min is only zeroed to allow a takeoff ramp";
 }
 
 TEST(CommandFrontEndTest, TakeoffRampVelocityLimitIsMonotonic)

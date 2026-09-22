@@ -234,3 +234,42 @@ PARAM_DEFINE_FLOAT(MC_SEAT_TAU_A, 0.030f);
  * @group Multicopter Controller Framework
  */
 PARAM_DEFINE_FLOAT(MC_SEAT_T, 0.020f);
+
+/**
+ * Seat allocator-saturation gate
+ *
+ * Whether allocator saturation freezes the theta_s adaptation. 1 = gated (default and the
+ * behaviour every archived run was flown with), 0 = adapt straight through saturation.
+ *
+ * THE ARGUMENT FOR GATING. Once the mixer clips, the achieved direction stops following the
+ * commanded one for reasons that have nothing to do with delay geometry, so integrating it
+ * winds up on error the seat itself caused.
+ *
+ * THE ARGUMENT AGAINST, measured 2026-09-19. All 51 archived level-2/3 ulogs saturate
+ * roll/pitch, from 10 % of ticks to 95 %, and on the adapting arms the gate explains the
+ * freezing and nothing else does - P(gated | saturated) 99-100 %, P(gated | not saturated)
+ * 0 %. One run had the law frozen for 80 % of the flight. Worse, the skipped ticks are not a
+ * random sample: |xd| on them runs 1.3x to 32x the ticks that were used, so the gate removes
+ * exactly the ticks MC_SEAT_LAW = 1 (cross) weights most heavily. A magnitude clip also does
+ * not ROTATE the wrench, which is the quantity alpha measures, so the theoretical case for
+ * gating the ANGLE is weaker than it looks.
+ *
+ * WHY 1 IS STILL THE DEFAULT. The flying baseline was established with it on: level-3 hover,
+ * 20 ms pole, r = 29.4, n = 5, theta_s = -0.4731 +/- 0.0009 over five runs. Setting 0 is an
+ * experiment against that baseline, not a correction to it.
+ *
+ * BOTH ARCHIVES STILL REPRODUCE at this default. The level-1 twin
+ * (examples/utils/seat.py) never drove the flag before 2026-09-19 and now does, from its own
+ * torque re-clip - but that clip is behind `torque_max`, which is None unless a run passes
+ * --controller-gains torque_max=..., and no archived level-1 run does. So the flag is never
+ * assigned there and the gate stays inert whatever SATGATE says. Level 1 is bit-identical;
+ * level 2/3 reproduce at SATGATE = 1.
+ *
+ * The residual risk at 0: PX4's desaturation redistributes across axes rather than scaling
+ * uniformly, so some saturation-induced rotation does reach alpha.
+ *
+ * @value 0 Adapt through saturation
+ * @value 1 Freeze while saturated
+ * @group Multicopter Controller Framework
+ */
+PARAM_DEFINE_INT32(MC_SEAT_SATGATE, 1);

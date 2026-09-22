@@ -150,6 +150,53 @@ trajectory_setpoint_s CommandFrontEnd::generateFailsafeSetpoint(uint64_t now,
 	return sp;
 }
 
+/**
+ * Whether a trajectory setpoint can be flown at all, mirroring PositionControl::_inputValid()
+ * (PositionControl.cpp:227-267).
+ *
+ * Three rules, all of them stock's:
+ *   1. every axis has to be commanded somehow - position, velocity or acceleration;
+ *   2. x and y have to be commanded the SAME way, because the horizontal pair is controlled
+ *      as a vector and half a vector is not a setpoint;
+ *   3. an axis may only be commanded in a quantity the estimator can still supply.
+ *
+ * Rule 3 is the one that matters in flight: it is what turns "the EKF just dropped the
+ * horizontal position solution while holding position" into a failsafe instead of into a
+ * silent downgrade to velocity damping, with the pilot told nothing.
+ */
+static bool setpointUsable(const trajectory_setpoint_s &sp, const mc_ctrl::ControllerState &state)
+{
+	const Vector3f position_sp(sp.position);
+	const Vector3f velocity_sp(sp.velocity);
+	const Vector3f acceleration_sp(sp.acceleration);
+
+	for (int i = 0; i < 3; i++) {
+		if (!PX4_ISFINITE(position_sp(i)) && !PX4_ISFINITE(velocity_sp(i)) && !PX4_ISFINITE(acceleration_sp(i))) {
+			return false;
+		}
+	}
+
+	if ((PX4_ISFINITE(position_sp(0)) != PX4_ISFINITE(position_sp(1)))
+	    || (PX4_ISFINITE(velocity_sp(0)) != PX4_ISFINITE(velocity_sp(1)))
+	    || (PX4_ISFINITE(acceleration_sp(0)) != PX4_ISFINITE(acceleration_sp(1)))) {
+		return false;
+	}
+
+	for (int i = 0; i < 3; i++) {
+		if (PX4_ISFINITE(position_sp(i)) && !PX4_ISFINITE(state.position(i))) {
+			return false;
+		}
+
+		// state.acceleration is the filtered derivative of state.velocity and the provider
+		// NaNs the two together, so this is stock's _vel_dot check in this module's terms.
+		if (PX4_ISFINITE(velocity_sp(i)) && (!PX4_ISFINITE(state.velocity(i)) || !PX4_ISFINITE(state.acceleration(i)))) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void CommandFrontEnd::buildTrajectoryCommand(const mc_ctrl::ControllerState &state, uint64_t now)
 {
 	// Latch when position control became active, so a stale setpoint from before
@@ -161,14 +208,34 @@ void CommandFrontEnd::buildTrajectoryCommand(const mc_ctrl::ControllerState &sta
 
 	applyEkfResetsToSetpoint(state.resets, _trajectory_setpoint);
 
-	// No fresh setpoint since position control started -> failsafe.
-	if (_trajectory_setpoint.timestamp < _time_position_control_enabled) {
+	// Two independent ways a setpoint can be unflyable, and stock rejects both. It can be
+	// STALE - nothing fresh since position control started
+	// (MulticopterPositionControl.cpp:445-454) - or it can be UNUSABLE ON ITS FACE, which
+	// stock catches when PositionControl::update() returns false and drops the cycle into
+	// the same fallback ladder (MulticopterPositionControl.cpp:576-601). Only the first was
+	// implemented here, so a position-hold setpoint that outlived its position estimate was
+	// flown as if nothing had happened: the stage saw a non-finite state, contributed no
+	// position error, and the vehicle drifted on velocity damping alone.
+	const bool stale = (_trajectory_setpoint.timestamp < _time_position_control_enabled);
+
+	if (stale || !setpointUsable(_trajectory_setpoint, state)) {
 		// Accept the last valid setpoint for a short window before giving up
-		// (MulticopterPositionControl.cpp:577-601).
-		if ((_last_valid_setpoint.timestamp != 0) && (now < _last_valid_setpoint.timestamp + 200_ms)) {
+		// (MulticopterPositionControl.cpp:577-601). It has to clear the same bar: the
+		// estimate it needs may be exactly the one that just went away.
+		if ((_last_valid_setpoint.timestamp != 0) && (now < _last_valid_setpoint.timestamp + 200_ms)
+		    && setpointUsable(_last_valid_setpoint, state)) {
 			_trajectory_setpoint = _last_valid_setpoint;
 
 		} else {
+			// Stock also clears _vehicle_constraints here (MulticopterPositionControl.cpp:596).
+			// Deliberately NOT copied: stock re-reads that topic at the top of every position
+			// cycle, so its reset lasts exactly one iteration, whereas this module LATCHES the
+			// constraints and only refreshes them when the topic updates - at flight_mode_manager's
+			// rate, not the gyro rate this runs at. The same two lines would therefore erase
+			// want_takeoff and the speed limits for however many cycles fall between two
+			// publications, which is a worse failure than the stale value it removes. Both
+			// speed fields already fall back to their MPC_ parameters when NaN, and want_takeoff
+			// only gates the ready_for_takeoff -> rampup edge.
 			_trajectory_setpoint = generateFailsafeSetpoint(now, state);
 		}
 
@@ -370,6 +437,18 @@ const mc_ctrl::ControllerCommand &CommandFrontEnd::update(const mc_ctrl::Control
 		// Leaving position control: re-arm the "no setpoint yet" latch so a stale
 		// setpoint cannot be accepted when we come back.
 		_position_control_was_enabled = false;
+
+		// Keep the takeoff state machine advancing while another level owns the vehicle,
+		// with skip_takeoff asserted so an armed vehicle is held at TakeoffState::flight.
+		// Without this the machine only ticks inside buildTrajectoryCommand(), so a
+		// vehicle that took off in Stabilized re-enters Trajectory at ::disarmed: the
+		// not_taken_off branch there then replaces the setpoint with a_z = +100 - the
+		// "make no thrust" sentinel - and nothing clears it, because leaving
+		// ::ready_for_takeoff needs want_takeoff and a hovering pilot with a centred
+		// throttle stick is asking for altitude hold, not a climb. The result is the
+		// collective dropping to zero on a STAB -> ALTCTL switch.
+		// (MulticopterPositionControl.cpp:617-621, whose comment says the same.)
+		_takeoff.updateTakeoffState(_vcm.flag_armed, state.landed, false, 10.f, true, state.timestamp_sample);
 	}
 
 	if (!_vcm.flag_control_manual_enabled || (level != mc_ctrl::ControlLevel::Attitude)) {

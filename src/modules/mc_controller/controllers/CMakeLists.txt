@@ -41,6 +41,10 @@ px4_add_library(MulticopterControllers
 	EigenController.hpp
 	PoleAdapter.cpp
 	PoleAdapter.hpp
+	RateLimits.cpp
+	RateLimits.hpp
+	ActuatorLead.cpp
+	ActuatorLead.hpp
 	Seat.cpp
 	Seat.hpp
 	TemplateController.cpp

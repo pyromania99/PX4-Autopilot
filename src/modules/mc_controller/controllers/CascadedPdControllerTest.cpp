@@ -80,6 +80,9 @@ void resetParams()
 	setParam("MC_PD_ATT_P", 0.6f);
 	setParam("MC_PD_ATT_D", 0.15f);
 	setParam("MC_PD_YAWR_D", 0.0f);
+	setParam("MC_ROLLRATE_MAX", 220.0f);
+	setParam("MC_PITCHRATE_MAX", 220.0f);
+	setParam("MC_YAWRATE_MAX", 200.0f);
 }
 
 /// Hovering, level, stationary, at the origin, 100 m up.
@@ -645,6 +648,47 @@ TEST_F(CascadedPdControllerTest, ResetClearsCachedState)
 }
 
 /**
+ * MC_ROLLRATE_MAX / MC_PITCHRATE_MAX / MC_YAWRATE_MAX bound what the angle stage may ask
+ * for, where stock applies them (AttitudeControl.cpp:110-113). Nothing in this module
+ * applied them, so a large attitude error produced a rate demand bounded only by Kp/Kd.
+ */
+TEST_F(CascadedPdControllerTest, RateSetpointIsLimitedByMcPitchrateMax)
+{
+	reconfigure("MC_PITCHRATE_MAX", 45.f);
+
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.level = ControlLevel::Attitude;
+	command.thrust_body_sp = Vector3f(0.f, 0.f, -0.5f);
+	command.attitude_sp = Quatf(Eulerf(0.f, math::radians(35.f), 0.f));
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+
+	EXPECT_LE(fabsf(output.rate_setpoint(1)), math::radians(45.f) + 1e-4f);
+	EXPECT_NEAR(fabsf(output.rate_setpoint(1)), math::radians(45.f), 1e-4f) << "and it is actually saturating";
+}
+
+TEST_F(CascadedPdControllerTest, AcroRateSetpointIsNotTouchedByTheAttitudeCeiling)
+{
+	reconfigure("MC_ROLLRATE_MAX", 45.f);
+
+	ControllerState state = hoverState();
+	ControllerCommand command{};
+	command.level = ControlLevel::BodyRate;
+	command.rate_sp = Vector3f(math::radians(400.f), 0.f, 0.f);
+	command.thrust_body_sp = Vector3f(0.f, 0.f, -0.5f);
+	command.thrust_min = 0.f;
+	command.thrust_max = 1.f;
+	command.manual = true;
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+
+	EXPECT_NEAR(output.rate_setpoint(0), math::radians(400.f), 1e-4f);
+}
+
+/**
  * MC_PD_ATT_D == 0 must not silently disable roll and pitch. The inner loop is factored
  * as Kd*(w_sp - w), which degenerates at Kd == 0, so the gain is floored in updateParams().
  * Yaw is deliberately NOT floored - zero there is the default and means what it says.
@@ -665,11 +709,15 @@ TEST_F(CascadedPdControllerTest, ZeroAttitudeDampingIsFlooredButZeroYawDampingIs
 	ControllerOutput output{};
 	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
 
-	// Roll still corrects, at the floored gain: tau = -Kp*e_R - 0.01*w.
+	// Roll still corrects, at the floored gain: tau = Kd*(w_sp - w) with w_sp = -(Kp/Kd)*e_R.
+	// At Kd == 0.01 that ratio asks for ~5 rad/s off a 10 deg error, so MC_ROLLRATE_MAX is
+	// what actually reaches the inner loop - the ceiling is part of the answer here, not an
+	// interference with it.
 	const Dcmf R(state.q);
 	const Dcmf R_des(output.attitude_setpoint);
 	const Vector3f e_R = 0.5f * Dcmf(R_des.transpose() * R - R.transpose() * R_des).vee();
-	EXPECT_NEAR(output.torque(0), -0.6f * e_R(0) - 0.01f * state.angular_velocity(0), 1e-5f);
+	const float rate_sp = math::constrain(-(0.6f / 0.01f) * e_R(0), -math::radians(220.f), math::radians(220.f));
+	EXPECT_NEAR(output.torque(0), 0.01f * (rate_sp - state.angular_velocity(0)), 1e-5f);
 	EXPECT_LT(output.torque(0), -1e-3f);
 
 	// Yaw damping really is off despite a 2 rad/s spin.

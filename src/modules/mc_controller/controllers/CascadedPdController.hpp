@@ -61,6 +61,8 @@
 
 #pragma once
 
+#include "RateLimits.hpp"
+
 #include <MulticopterControllerBase.hpp>
 #include <TrajectoryStage.hpp>
 
@@ -159,6 +161,14 @@ private:
 	 * state.freshness.position_new so it keeps position rate rather than gyro rate.
 	 */
 	TrajectoryStage _trajectory_stage;
+
+	/**
+	 * MC_ROLLRATE_MAX / MC_PITCHRATE_MAX / MC_YAWRATE_MAX, applied to what the angle stage
+	 * asks for. Stock applies these inside AttitudeControl::update(); this law reproduces
+	 * that law and had been reproducing it without the ceiling. Not applied in Acro, where
+	 * the rate setpoint is the pilot's own and MC_ACRO_*_MAX already bounds it.
+	 */
+	RateLimits _rate_limits;
 
 	// Cached gains, so update() never touches the parameter system.
 	matrix::Vector3f _pos_p{};	///< [1/s^2] (MC_PD_XY_P, MC_PD_XY_P, MC_PD_Z_P)

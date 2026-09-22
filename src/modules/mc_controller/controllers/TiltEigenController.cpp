@@ -178,7 +178,8 @@ Vector3f tiltError(const Dcmf &R, const Vector3f &body_z_setpoint)
 } // namespace
 
 TiltEigenController::TiltEigenController(ModuleParams *parent) :
-	MulticopterControllerBase(parent)
+	MulticopterControllerBase(parent),
+	_rate_limits(this)
 {
 	TiltEigenController::updateParams();
 	TiltEigenController::reset();
@@ -242,24 +243,51 @@ void TiltEigenController::stepTrajectoryToAttitude(const mc_ctrl::ControllerStat
 	// integrator anywhere in this controller: steady wind leaves a steady offset.
 	Vector3f acceleration_sp{};
 
+	// The equivalent velocity setpoint the framework's limits attach to, NaN where this
+	// axis has none. Same construction and the same reasoning as
+	// TrajectoryStage::limitVelocitySetpoint(), which this law does not share only because
+	// it carries no integrator; see that function for why the clamp belongs on this
+	// quantity and how the takeoff ramp arrives as a negative vel_limit_up.
+	Vector3f velocity_sp{NAN, NAN, NAN};
+	Vector3f position_error{};
+
 	for (int i = 0; i < 3; i++) {
 		const bool have_position = PX4_ISFINITE(command.position_sp(i)) && PX4_ISFINITE(state.position(i));
-		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && PX4_ISFINITE(state.velocity(i));
+		const bool have_velocity_state = PX4_ISFINITE(state.velocity(i));
+		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && have_velocity_state;
 
-		const float position_error = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
+		position_error(i) = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
 
 		// With no velocity setpoint the D term damps absolute velocity, which is the
 		// same thing with v_sp == 0.
-		float velocity_error = 0.f;
-
-		if (have_velocity) {
-			velocity_error = command.velocity_sp(i) - state.velocity(i);
-
-		} else if (PX4_ISFINITE(state.velocity(i))) {
-			velocity_error = -state.velocity(i);
+		if (have_velocity_state && (_pos_d(i) > FLT_EPSILON)) {
+			const float velocity_ff = have_velocity ? command.velocity_sp(i) : 0.f;
+			velocity_sp(i) = velocity_ff + (_pos_p(i) / _pos_d(i)) * position_error(i);
 		}
+	}
 
-		acceleration_sp(i) = _pos_p(i) * position_error + _pos_d(i) * velocity_error;
+	if (PX4_ISFINITE(velocity_sp(2)) && PX4_ISFINITE(command.vel_limit_up) && PX4_ISFINITE(command.vel_limit_down)) {
+		velocity_sp(2) = math::constrain(velocity_sp(2), -command.vel_limit_up, command.vel_limit_down);
+	}
+
+	if (PX4_ISFINITE(velocity_sp(0)) && PX4_ISFINITE(velocity_sp(1)) && PX4_ISFINITE(command.vel_limit_xy)) {
+		const Vector2f lateral(velocity_sp(0), velocity_sp(1));
+		const float norm = lateral.norm();
+
+		if ((norm > command.vel_limit_xy) && (norm > FLT_EPSILON)) {
+			const Vector2f limited = lateral * (math::max(command.vel_limit_xy, 0.f) / norm);
+			velocity_sp(0) = limited(0);
+			velocity_sp(1) = limited(1);
+		}
+	}
+
+	for (int i = 0; i < 3; i++) {
+		if (PX4_ISFINITE(velocity_sp(i))) {
+			acceleration_sp(i) = _pos_d(i) * (velocity_sp(i) - state.velocity(i));
+
+		} else {
+			acceleration_sp(i) = _pos_p(i) * position_error(i);
+		}
 
 		if (PX4_ISFINITE(command.acceleration_sp(i))) {
 			acceleration_sp(i) += command.acceleration_sp(i);
@@ -348,7 +376,18 @@ Vector3f TiltEigenController::tiltToRateSetpoint(const mc_ctrl::ControllerState 
 	// is the damping that replaces it. The consequence worth noting at the call site: this
 	// function has no memory and no dt, so it is exact at any update rate and there is
 	// nothing here for a mode change to carry across.
-	return Vector3f(_att_p * _tilt_error(0), _att_p * _tilt_error(1), yaw_rate_setpoint);
+	Vector3f rate_setpoint(_att_p * _tilt_error(0), _att_p * _tilt_error(1), 0.f);
+
+	// The yaw feed-forward is a rotation about the WORLD vertical, and this setpoint is in
+	// body FRD - the two coincide only while level. See EigenController::angleToRateSetpoint()
+	// for the full argument; same construction as stock (AttitudeControl.cpp:99-107).
+	if (PX4_ISFINITE(yaw_rate_setpoint) && (fabsf(yaw_rate_setpoint) > FLT_EPSILON)) {
+		rate_setpoint += state.q.inversed().dcm_z() * yaw_rate_setpoint;
+	}
+
+	// MC_ROLLRATE_MAX / MC_PITCHRATE_MAX / MC_YAWRATE_MAX, where stock applies them: on the
+	// whole demand, feed-forward included, and never on an Acro setpoint.
+	return _rate_limits.apply(rate_setpoint);
 }
 
 Vector3f TiltEigenController::eigenTorque(const Vector3f &rate_setpoint, const Vector3f &angular_velocity) const

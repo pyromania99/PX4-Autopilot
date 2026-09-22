@@ -71,6 +71,9 @@ void TrajectoryStage::reset()
 	_acceleration_setpoint = Vector3f(NAN, NAN, NAN);
 	_hover_thrust_prev = NAN;
 	_stage_valid = false;
+	_thrust_saturated_max = false;
+	_thrust_saturated_min = false;
+	_lateral_saturated = false;
 }
 
 void TrajectoryStage::resetIntegral()
@@ -125,8 +128,69 @@ void TrajectoryStage::updateIntegral(const mc_ctrl::ControllerState &state, int 
 		return;
 	}
 
+	// Anti-windup. Integrating into an output that is already pinned buys nothing and has
+	// to be unwound later, so the term is frozen while the limit is pushing back - and only
+	// in the direction that would deepen it, so the integrator can always still leave.
+	// NED: a negative z error means the setpoint is above the vehicle, i.e. asking for more
+	// thrust. The lateral case cannot be split per axis from a single clamp on the vector
+	// norm, so the pair freezes together, which is the honest reading of "the horizontal
+	// demand as a whole is already past what the tilt limit can deliver".
+	if (axis < 2) {
+		if (_lateral_saturated) {
+			return;
+		}
+
+	} else if ((_thrust_saturated_max && (position_error < 0.f))
+		   || (_thrust_saturated_min && (position_error > 0.f))) {
+		return;
+	}
+
 	_integral(axis) += _pos_i(axis) * position_error * state.freshness.dt_position;
 	_integral(axis) = math::constrain(_integral(axis), -_integral_limit, _integral_limit);
+}
+
+void TrajectoryStage::limitVelocitySetpoint(const mc_ctrl::ControllerCommand &command, Vector3f &velocity_sp) const
+{
+	// WHY THIS EXISTS. CommandFrontEnd computes vel_limit_xy/up/down every cycle - including
+	// the smooth-takeoff ramp, which is delivered as a time-varying vel_limit_up - and
+	// ControllerIO.hpp documents them as limits "the framework computed and expects the
+	// controller to respect". Nothing respected them: MPC_XY_VEL_MAX, MPC_Z_VEL_MAX_UP/DN
+	// and MPC_TKO_RAMP_T had no effect on any law in this module.
+	//
+	// WHERE THE LIMIT ATTACHES. Stock is a cascade: its position loop generates an internal
+	// velocity setpoint, clamps it, and only then runs the velocity loop
+	// (PositionControl.cpp:127-141). This law has no cascade - pos_p multiplies position
+	// error straight into acceleration - but the two forms are algebraically identical,
+	//
+	//   pos_p*e_p + pos_d*(v_ff - v)  ==  pos_d*(v_sp - v),  v_sp = v_ff + (pos_p/pos_d)*e_p
+	//
+	// so the clamp has a well-defined home here too and means the same thing it does in
+	// stock: the vehicle may not ask to travel faster than this. The acceleration
+	// feed-forward is added after the clamp, exactly as stock adds it after _positionControl().
+	//
+	// DIFFERENCE FROM STOCK, deliberate: ControlMath::constrainXY() prioritises the
+	// position-derived component of the horizontal setpoint over the feed-forward one and
+	// sacrifices the feed-forward first. That needs the two components kept apart all the
+	// way down; a single norm clamp shrinks both together. The two agree whenever only one
+	// component is present, which covers Altitude, Position with sticks, and position hold.
+	if (PX4_ISFINITE(velocity_sp(2)) && PX4_ISFINITE(command.vel_limit_up) && PX4_ISFINITE(command.vel_limit_down)) {
+		// vel_limit_up is NEGATIVE while the takeoff ramp is running, which is precisely how
+		// the ramp holds the collective down before liftoff: the lower bound -vel_limit_up
+		// then exceeds the upper one and constrain() returns the lower, commanding a descent
+		// the ground refuses. Same arithmetic as stock, same reliance on that ordering.
+		velocity_sp(2) = math::constrain(velocity_sp(2), -command.vel_limit_up, command.vel_limit_down);
+	}
+
+	if (PX4_ISFINITE(velocity_sp(0)) && PX4_ISFINITE(velocity_sp(1)) && PX4_ISFINITE(command.vel_limit_xy)) {
+		const Vector2f lateral(velocity_sp(0), velocity_sp(1));
+		const float norm = lateral.norm();
+
+		if ((norm > command.vel_limit_xy) && (norm > FLT_EPSILON)) {
+			const Vector2f limited = lateral * (math::max(command.vel_limit_xy, 0.f) / norm);
+			velocity_sp(0) = limited(0);
+			velocity_sp(1) = limited(1);
+		}
+	}
 }
 
 Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerState &state,
@@ -143,34 +207,50 @@ Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerS
 	// position-error-only law cannot serve at all.
 	Vector3f acceleration_sp{};
 
+	// The velocity this law is effectively asking for on each axis - see limitVelocitySetpoint()
+	// for why it exists and what it is differenced against. NaN where there is none.
+	Vector3f velocity_sp{NAN, NAN, NAN};
+	Vector3f position_error{};
+
 	for (int i = 0; i < 3; i++) {
 		const bool have_position = PX4_ISFINITE(command.position_sp(i)) && PX4_ISFINITE(state.position(i));
-		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && PX4_ISFINITE(state.velocity(i));
+		const bool have_velocity_state = PX4_ISFINITE(state.velocity(i));
+		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && have_velocity_state;
 
-		const float position_error = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
-
-		// With no velocity setpoint the D term damps absolute velocity, which is the
-		// same thing with v_sp == 0.
-		float velocity_error = 0.f;
-
-		if (have_velocity) {
-			velocity_error = command.velocity_sp(i) - state.velocity(i);
-
-		} else if (PX4_ISFINITE(state.velocity(i))) {
-			velocity_error = -state.velocity(i);
-		}
+		position_error(i) = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
 
 		// Only where a position is actually commanded: on a velocity-only axis there is no
 		// hold target, so there is nothing for an integrator to converge onto. This also
 		// drains the term the moment the mode stops commanding position.
 		if (have_position) {
-			updateIntegral(state, i, position_error);
+			updateIntegral(state, i, position_error(i));
 
 		} else {
 			_integral(i) = 0.f;
 		}
 
-		acceleration_sp(i) = pos_p(i) * position_error + pos_d(i) * velocity_error + _integral(i);
+		// With no velocity setpoint the D term damps absolute velocity, which is the same
+		// thing with v_sp == 0. Both cases fold into the equivalent velocity setpoint, which
+		// only exists where there is a velocity to difference against and a gain to divide by.
+		if (have_velocity_state && (pos_d(i) > FLT_EPSILON)) {
+			const float velocity_ff = have_velocity ? command.velocity_sp(i) : 0.f;
+			velocity_sp(i) = velocity_ff + (pos_p(i) / pos_d(i)) * position_error(i);
+		}
+	}
+
+	limitVelocitySetpoint(command, velocity_sp);
+
+	for (int i = 0; i < 3; i++) {
+		if (PX4_ISFINITE(velocity_sp(i))) {
+			acceleration_sp(i) = pos_d(i) * (velocity_sp(i) - state.velocity(i));
+
+		} else {
+			// No usable velocity estimate, or no D gain on this axis: the position term
+			// acts alone, and there was no velocity setpoint to limit in the first place.
+			acceleration_sp(i) = pos_p(i) * position_error(i);
+		}
+
+		acceleration_sp(i) += _integral(i);
 
 		if (PX4_ISFINITE(command.acceleration_sp(i))) {
 			acceleration_sp(i) += command.acceleration_sp(i);
@@ -185,7 +265,9 @@ Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerS
 	const Vector2f lateral_acceleration(acceleration_sp);
 	const float lateral_norm = lateral_acceleration.norm();
 
-	if (lateral_norm > max_lateral_acceleration && lateral_norm > FLT_EPSILON) {
+	_lateral_saturated = (lateral_norm > max_lateral_acceleration) && (lateral_norm > FLT_EPSILON);
+
+	if (_lateral_saturated) {
 		const Vector2f limited = lateral_acceleration * (max_lateral_acceleration / lateral_norm);
 		acceleration_sp(0) = limited(0);
 		acceleration_sp(1) = limited(1);
@@ -220,7 +302,7 @@ float TrajectoryStage::currentHeading(const mc_ctrl::ControllerState &state)
 
 Vector3f TrajectoryStage::computeThrustSetpoint(const mc_ctrl::ControllerState &state,
 		const mc_ctrl::ControllerCommand &command,
-		const Vector3f &acceleration_sp) const
+		const Vector3f &acceleration_sp)
 {
 	// Normalized, not Newtons. Hover thrust is by definition what produces 1 g, so a
 	// demand of a m/s^2 costs a/g of it. acceleration_sp(2) is NED down-positive, so
@@ -238,7 +320,14 @@ Vector3f TrajectoryStage::computeThrustSetpoint(const mc_ctrl::ControllerState &
 		collective = thrust_ned_z / cos_tilt;
 	}
 
-	return Vector3f(0.f, 0.f, math::constrain(collective, -command.thrust_max, -command.thrust_min));
+	const float collective_limited = math::constrain(collective, -command.thrust_max, -command.thrust_min);
+
+	// Read by the integrator's anti-windup gate on the next pass. More thrust is more
+	// negative, so the max-thrust limit is the lower bound of the two.
+	_thrust_saturated_max = (collective <= -command.thrust_max);
+	_thrust_saturated_min = (collective >= -command.thrust_min);
+
+	return Vector3f(0.f, 0.f, collective_limited);
 }
 
 void TrajectoryStage::fillLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp,

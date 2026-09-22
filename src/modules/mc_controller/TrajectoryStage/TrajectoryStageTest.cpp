@@ -236,6 +236,167 @@ TEST_F(TrajectoryStageTest, AccelerationFeedforwardIsAdded)
 	EXPECT_NEAR(acceleration(1), 0.f, 1e-5f);
 }
 
+// ---------------------------------------------------------------------------------------
+// The framework's velocity envelope. Every one of these limits was computed by
+// CommandFrontEnd and then ignored, including the smooth-takeoff ramp.
+// ---------------------------------------------------------------------------------------
+
+TEST_F(TrajectoryStageTest, ClimbRateIsBoundedByVelLimitUp)
+{
+	ControllerState state = hoverState();
+	state.velocity.setZero();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = state.position(2) - 50.f;	// 50 m above: a huge climb demand
+	command.vel_limit_up = 3.f;
+	command.vel_limit_down = 1.f;
+
+	const Vector3f acceleration = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+
+	// Unlimited, kPosP(2) * -50 would ask for -500 m/s^2. The ceiling is a VELOCITY of
+	// 3 m/s, which at this law's kPosD(2) is what the acceleration must correspond to.
+	EXPECT_NEAR(acceleration(2), kPosD(2) * (-3.f - state.velocity(2)), 1e-4f);
+}
+
+TEST_F(TrajectoryStageTest, DescentRateIsBoundedByVelLimitDown)
+{
+	ControllerState state = hoverState();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = state.position(2) + 50.f;
+	command.vel_limit_up = 3.f;
+	command.vel_limit_down = 1.f;
+
+	const Vector3f acceleration = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+
+	EXPECT_NEAR(acceleration(2), kPosD(2) * (1.f - state.velocity(2)), 1e-4f);
+}
+
+TEST_F(TrajectoryStageTest, HorizontalSpeedIsBoundedByVelLimitXy)
+{
+	ControllerState state = hoverState();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(0) = state.position(0) + 100.f;
+	command.position_sp(1) = state.position(1) + 100.f;
+	command.vel_limit_xy = 4.f;
+	command.tilt_limit = math::radians(80.f);	// keep the lateral clamp out of the way
+
+	const Vector3f acceleration = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+
+	// The demand is limited as a VECTOR, so the diagonal keeps its direction and its
+	// magnitude becomes vel_limit_xy * kPosD.
+	const Vector2f lateral(acceleration(0), acceleration(1));
+	EXPECT_NEAR(lateral.norm(), 4.f * kPosD(0), 1e-3f);
+	EXPECT_NEAR(acceleration(0), acceleration(1), 1e-4f) << "direction must survive the clamp";
+}
+
+TEST_F(TrajectoryStageTest, VelocityLimitLeavesAnUnsaturatedDemandAlone)
+{
+	ControllerState state = hoverState();
+	state.position = Vector3f(0.f, 0.f, -100.f);
+	state.velocity = Vector3f(0.3f, -0.2f, 0.1f);
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp = Vector3f(1.f, 0.5f, -101.f);
+	command.vel_limit_xy = 12.f;
+	command.vel_limit_up = 3.f;
+	command.vel_limit_down = 1.f;
+
+	const Vector3f acceleration = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+
+	// Well inside the envelope, so the plain PD answer must come back untouched.
+	for (int i = 0; i < 3; i++) {
+		const float position_error = command.position_sp(i) - state.position(i);
+		EXPECT_NEAR(acceleration(i), kPosP(i) * position_error + kPosD(i) * -state.velocity(i), 1e-4f) << "axis " << i;
+	}
+}
+
+/**
+ * The takeoff ramp is delivered as a vel_limit_up that starts NEGATIVE and rises. That
+ * inverted bound is the whole mechanism: it demands a descent the ground refuses, so the
+ * collective stays at its floor until the ramp has climbed through zero.
+ */
+TEST_F(TrajectoryStageTest, NegativeVelLimitUpSuppressesThrustAsTheTakeoffRampIntends)
+{
+	ControllerState state = hoverState();
+	state.position = Vector3f(0.f, 0.f, 0.f);
+	state.velocity.setZero();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = -5.f;		// asking to climb 5 m
+	command.vel_limit_down = 1.f;
+	command.thrust_min = 0.f;
+	command.thrust_max = 1.f;
+
+	command.vel_limit_up = -2.45f;		// ramp not started: -CONSTANTS_ONE_G / MPC_Z_VEL_P_ACC
+	const Vector3f early = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	const Vector3f early_thrust = _stage->computeThrustSetpoint(state, command, early);
+
+	EXPECT_GT(early(2), 0.f) << "a downward demand is what keeps the collective off";
+	EXPECT_FLOAT_EQ(early_thrust(2), 0.f) << "collective must sit on thrust_min";
+
+	command.vel_limit_up = 3.f;		// ramp complete
+	const Vector3f late = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	const Vector3f late_thrust = _stage->computeThrustSetpoint(state, command, late);
+
+	EXPECT_LT(late(2), 0.f) << "now it may climb";
+	EXPECT_LT(late_thrust(2), -0.5f) << "and the collective is above hover";
+}
+
+/**
+ * Integrating into a limit that is already pushing back only buys an overshoot on the way
+ * out. Stock freezes the vertical term on thrust saturation (PositionControl.cpp:156-160);
+ * this stage had no equivalent on either axis pair.
+ */
+TEST_F(TrajectoryStageTest, IntegralFreezesWhileTheCollectiveIsSaturated)
+{
+	reconfigure("MC_OL_Z_I", 1.f);
+
+	ControllerState state = hoverState();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = state.position(2) - 20.f;	// climb demand it cannot meet
+	command.thrust_max = 0.2f;				// ... because thrust is capped below hover
+
+	// Pass 1 establishes the saturation; the gate reads it on the pass after.
+	const Vector3f first = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	_stage->computeThrustSetpoint(state, command, first);
+	const float integral_after_first = _stage->integral()(2);
+
+	ASSERT_LT(integral_after_first, 0.f) << "the first pass must integrate, or the test proves nothing";
+
+	const Vector3f second = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	_stage->computeThrustSetpoint(state, command, second);
+
+	EXPECT_FLOAT_EQ(_stage->integral()(2), integral_after_first) << "frozen while pinned";
+
+	// It must still be able to leave: reverse the error and the term unwinds.
+	command.position_sp(2) = state.position(2) + 20.f;
+	const Vector3f third = _stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	_stage->computeThrustSetpoint(state, command, third);
+
+	EXPECT_GT(_stage->integral()(2), integral_after_first) << "must never be trapped in the limit";
+}
+
+TEST_F(TrajectoryStageTest, IntegralFreezesWhileTheLateralDemandIsTiltLimited)
+{
+	reconfigure("MC_OL_XY_I", 1.f);
+
+	ControllerState state = hoverState();
+
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(0) = state.position(0) + 200.f;	// far past what 45 deg can deliver
+	command.tilt_limit = math::radians(45.f);
+
+	_stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	const float integral_after_first = _stage->integral()(0);
+	ASSERT_GT(integral_after_first, 0.f);
+
+	_stage->computeAccelerationSetpoint(state, command, kPosP, kPosD);
+	EXPECT_FLOAT_EQ(_stage->integral()(0), integral_after_first);
+}
+
 TEST_F(TrajectoryStageTest, LateralDemandIsBoundedByWhatTheTiltLimitDelivers)
 {
 	ControllerState state = hoverState();

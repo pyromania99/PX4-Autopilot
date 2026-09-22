@@ -88,6 +88,9 @@ void resetParams()
 	setParam("MC_EIG_IYY", 0.01f);
 	setParam("MC_EIG_IZZ", 0.02f);
 	setParam("MC_EIG_TRQ_MAX", 1.0f);
+	setParam("MC_ROLLRATE_MAX", 220.0f);
+	setParam("MC_PITCHRATE_MAX", 220.0f);
+	setParam("MC_YAWRATE_MAX", 200.0f);
 }
 
 /// Hovering, level, stationary, at the origin, 100 m up.
@@ -672,6 +675,71 @@ TEST_F(EigenControllerTest, AngleErrorDerivativeIsSeededOnTheFirstCycle)
 	EXPECT_NEAR(large_d.rate_setpoint(0), small_d.rate_setpoint(0), 1e-6f);
 }
 
+// ---------------------------------------------------------------------------
+// The attitude loop's rate ceiling and the frame its yaw feed-forward lives in.
+// Both are stock behaviour (AttitudeControl.cpp:99-113) that no law here had.
+// ---------------------------------------------------------------------------
+
+TEST_F(EigenControllerTest, RateSetpointIsLimitedByMcRollrateMax)
+{
+	reconfigure("MC_ROLLRATE_MAX", 60.f);
+
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.level = ControlLevel::Attitude;
+	command.thrust_body_sp = Vector3f(0.f, 0.f, -0.5f);
+	// A 40 deg error against MC_EIG_ATT_P = 7 asks for ~4.9 rad/s, well past 60 deg/s.
+	command.attitude_sp = Quatf(Eulerf(math::radians(40.f), 0.f, 0.f));
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+
+	EXPECT_NEAR(output.rate_setpoint(0), math::radians(60.f), 1e-4f);
+}
+
+/// Acro is the pilot's own rate command, already bounded by MC_ACRO_*_MAX upstream. Stock's
+/// rate controller never applies MC_*RATE_MAX to it and neither may this.
+TEST_F(EigenControllerTest, AcroRateSetpointIsNotTouchedByTheAttitudeCeiling)
+{
+	reconfigure("MC_ROLLRATE_MAX", 60.f);
+
+	ControllerState state = hoverState();
+	ControllerCommand command = rateCommand(Vector3f(math::radians(400.f), 0.f, 0.f));
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+
+	EXPECT_NEAR(output.rate_setpoint(0), math::radians(400.f), 1e-4f);
+}
+
+/**
+ * The yaw stick asks for a turn about the WORLD vertical. Dropped into rate(2) it becomes a
+ * turn about the vehicle's own yaw axis instead, which at bank is a different rotation -
+ * the difference showing up as the roll and pitch rate the turn actually requires.
+ */
+TEST_F(EigenControllerTest, YawFeedforwardIsAWorldZRotationExpressedInTheBody)
+{
+	ControllerState state = hoverState();
+	state.q = Quatf(Eulerf(math::radians(30.f), 0.f, 0.f));	// banked
+
+	ControllerCommand command = hoverCommand(state);
+	command.level = ControlLevel::Attitude;
+	command.thrust_body_sp = Vector3f(0.f, 0.f, -0.5f);
+	command.attitude_sp = state.q;				// no angle error: only the feed-forward is left
+	command.yaw_sp_move_rate = 1.f;
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+
+	const Vector3f expected = state.q.inversed().dcm_z() * 1.f;
+	EXPECT_NEAR(output.rate_setpoint(0), expected(0), 1e-4f);
+	EXPECT_NEAR(output.rate_setpoint(1), expected(1), 1e-4f) << "at 30 deg of bank half the turn is pitch";
+	EXPECT_NEAR(output.rate_setpoint(2), expected(2), 1e-4f);
+
+	// Concretely: body yaw carries only cos(30 deg) of it.
+	EXPECT_NEAR(output.rate_setpoint(2), cosf(math::radians(30.f)), 1e-4f);
+}
+
 /**
  * The derivative is refreshed on a new attitude sample and HELD in between - at gyro rate
  * the attitude usually has not moved, and differentiating an unchanged error against a tiny
@@ -679,6 +747,12 @@ TEST_F(EigenControllerTest, AngleErrorDerivativeIsSeededOnTheFirstCycle)
  */
 TEST_F(EigenControllerTest, AngleErrorDerivativeIsHeldBetweenAttitudeSamples)
 {
+	// The derivative term this test is about reaches ~9 rad/s here, well past
+	// MC_ROLLRATE_MAX's 220 deg/s, and a clamped setpoint would hide the very quantity
+	// being measured. Raised so the subject stays observable; the ceiling itself is
+	// covered by RateSetpointIsLimitedByMcRollrateMax.
+	reconfigure("MC_ROLLRATE_MAX", 2000.f);
+
 	ControllerState state = hoverState();
 	ControllerCommand command = hoverCommand(state);
 	command.level = ControlLevel::Attitude;

@@ -103,6 +103,8 @@
 
 #pragma once
 
+#include "RateLimits.hpp"
+
 #include <MulticopterControllerBase.hpp>
 
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -130,6 +132,12 @@ protected:
 	void updateParams() override;
 
 private:
+	/**
+	 * MC_ROLLRATE_MAX / MC_PITCHRATE_MAX / MC_YAWRATE_MAX on what the tilt stage asks for,
+	 * where stock applies them. Not applied in Acro, whose setpoint is the pilot's own.
+	 */
+	RateLimits _rate_limits;
+
 	/// Stages 1+2: position/velocity PD -> desired acceleration -> desired thrust
 	/// DIRECTION and collective. Writes _body_z_setpoint, _attitude_setpoint,
 	/// _thrust_setpoint.

@@ -68,6 +68,7 @@ void Seat::updateParams()
 	_r_min = math::max(_param_mc_seat_rmin.get(), 0.f);
 	_tau_a = math::max(_param_mc_seat_tau_a.get(), 0.f);
 	_T = math::max(_param_mc_seat_t.get(), 0.f);
+	_sat_gate = (_param_mc_seat_satgate.get() != 0);
 
 	// Only the sign is used; the gain's magnitude lives in MC_SEAT_K.
 	_k_sign = (_param_mc_seat_ksign.get() < 0) ? -1.f : 1.f;
@@ -138,7 +139,11 @@ void Seat::adapt(const Vector2f &xd, const Vector2f &xa, float r, float dt)
 
 	// Misalignment is unobservable when the vehicle is not spinning: there is no spin
 	// frequency for the delay to rotate about, so whatever the angle reads is noise.
-	if (_saturated || (fabsf(r) <= _r_min) || !(dt > 0.f)
+	//
+	// The saturation term is behind MC_SEAT_SATGATE (default 1, the behaviour every
+	// archived run was flown with). See setSaturated() for what it costs and why it is
+	// still the default.
+	if ((_sat_gate && _saturated) || (fabsf(r) <= _r_min) || !(dt > 0.f)
 	    || !xd.isAllFinite() || !xa.isAllFinite()) {
 		return;
 	}

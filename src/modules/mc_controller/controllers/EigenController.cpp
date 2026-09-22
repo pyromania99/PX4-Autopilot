@@ -47,6 +47,8 @@ EigenController::EigenController(ModuleParams *parent) :
 	MulticopterControllerBase(parent),
 	_seat(this),
 	_pole(this),
+	_lead(this),
+	_rate_limits(this),
 	_trajectory_stage(this)
 {
 	EigenController::updateParams();
@@ -115,6 +117,7 @@ void EigenController::reset()
 	// would rotate the very first torque of the next flight by an angle nothing has
 	// measured.
 	_seat.reset();
+	_lead.reset();
 }
 
 void EigenController::stepTrajectoryToAcceleration(const mc_ctrl::ControllerState &state,
@@ -227,9 +230,29 @@ Vector3f EigenController::angleToRateSetpoint(const mc_ctrl::ControllerState &st
 
 	_attitude_error = Vector2f(roll_error, pitch_error);
 
-	return Vector3f(_att_p * roll_error + _att_d * _roll_error_rate,
-			_att_p * pitch_error + _att_d * _pitch_error_rate,
-			yaw_rate_setpoint);
+	Vector3f rate_setpoint(_att_p * roll_error + _att_d * _roll_error_rate,
+			       _att_p * pitch_error + _att_d * _pitch_error_rate,
+			       0.f);
+
+	/*
+	 * THE YAW FEED-FORWARD IS A WORLD-Z ROTATION, not a body-z one. The pilot's yaw stick
+	 * asks the vehicle to turn about the vertical, and this rate setpoint is expressed in
+	 * body FRD, so the two coincide only while level. Dropping the command into rate(2) -
+	 * as this did - means that at bank the vehicle turns about its own yaw axis instead,
+	 * which is a different rotation: the missing part shows up as the roll and pitch rate
+	 * the turn actually needs, and the angle PD is left to discover it as an error after
+	 * the fact. The world z-axis expressed in the body frame is the last column of
+	 * R.transposed(), i.e. q.inversed().dcm_z(); at MPC_MAN_TILT_MAX's 35 deg default the
+	 * correction is ~57% of the commanded rate, so this is not a small-angle nicety.
+	 * Same construction as stock (AttitudeControl.cpp:99-107).
+	 */
+	if (PX4_ISFINITE(yaw_rate_setpoint) && (fabsf(yaw_rate_setpoint) > FLT_EPSILON)) {
+		rate_setpoint += state.q.inversed().dcm_z() * yaw_rate_setpoint;
+	}
+
+	// Last, as stock does it: the ceiling applies to the whole demand including the
+	// feed-forward, not to the angle term alone.
+	return _rate_limits.apply(rate_setpoint);
 }
 
 Vector3f EigenController::eigenTorque(const Vector3f &rate_setpoint, const Vector3f &angular_velocity) const
@@ -415,8 +438,15 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	 * (possibly stale) internal value. PX4 supplies angular_accel directly
 	 * (vehicle_angular_velocity.xyz_derivative), so unlike level 1 there is no rate
 	 * difference and no sample alignment to get wrong - but note it is a backward
-	 * difference through a 2-pole low-pass at IMU_DGYRO_CUTOFF (20 Hz by default), so
-	 * it carries a phase of its own that the seat will read as part of the lag.
+	 * difference through a 1-pole AlphaFilter (time constant 1/(2*pi*f_c), NOT the 2-pole
+	 * LowPassFilter2p) at IMU_DGYRO_CUTOFF, flown here at 50 Hz, so it carries a phase of
+	 * its own that the seat will read as part of the lag. The order matters for the phase
+	 * arithmetic: 3.18 ms at 50 Hz 1-pole against 4.50 ms if it were 2-pole.
+	 *
+	 * And note what pairs with it: xd above is built from the COMMANDED torque, which is
+	 * internal and unfiltered. So xa/xd = H_filter * Ga * e^{i theta_s} - the measurement
+	 * filter's phase is INSIDE alpha, and the seat already cancels it. There is no separate
+	 * sensor feed-forward to build.
 	 */
 	/*
 	 * UNCONDITIONAL since 2026-09-17. This block used to be skipped entirely when the
@@ -490,6 +520,12 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 			_seat_stepped = PX4_ISFINITE(_seat.alpha()) ? 1.f : 0.f;
 		}
 	}
+
+	// LAST, after the seat: the actuator receives lead(seat(tau)) and therefore delivers
+	// e^{-sL} * seat(tau), i.e. a pure delay. The seat's observable is unaffected - it
+	// forms xd from the PRE-seat torque and xa from the measurement, so it simply sees a
+	// faster actuator and adapts to the smaller residual. See ActuatorLead.hpp.
+	_torque = _lead.apply(_torque, dt);
 
 	// N m -> normalized. control_allocator normalizes its own mix columns, so what it
 	// wants here is dimensionless and physical torque would be silently misinterpreted.

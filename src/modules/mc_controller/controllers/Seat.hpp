@@ -135,11 +135,25 @@ public:
 			       float spin_rate, float dt);
 
 	/**
-	 * Allocator saturation, which freezes the adaptation.
+	 * Allocator saturation, which freezes the adaptation when MC_SEAT_SATGATE is 1.
 	 *
 	 * Once the mixer clips, the achieved direction stops following the commanded one
 	 * for reasons that have nothing to do with delay geometry, and integrating that is
 	 * winding up on error the seat itself caused.
+	 *
+	 * HOW MUCH THIS GATE DOES, measured 2026-09-19. Across all 51 archived level-2/3
+	 * ulogs, roll/pitch allocator saturation occurs on every single one, from 10 % of
+	 * ticks to 95 %. On the arms that were adapting, the gate explains the freezing and
+	 * nothing else does: P(gated | saturated) is 99-100 % and P(gated | not saturated)
+	 * is 0 %. One run had the angle law frozen for 80 % of the flight, and the skipped
+	 * ticks were not a random sample - |xd| on them ran 1.3x to 32x the ticks that were
+	 * used, i.e. the gate removed exactly the ticks Law::Cross would have weighted most.
+	 *
+	 * IT IS STILL THE DEFAULT, because the flying baseline was established with it on:
+	 * L3 hover, 20 ms pole, r = 29.4, n = 5, theta_s = -0.4731 +/- 0.0009. Turning it
+	 * off is an experiment against that baseline, not a fix - hence the parameter.
+	 * Level 1 never drove this flag at all before 2026-09-19, so SATGATE = 1 matches PX4
+	 * to its own archive and SATGATE = 0 matches level 1 to its own.
 	 */
 	void setSaturated(bool saturated) { _saturated = saturated; }
 
@@ -189,6 +203,7 @@ private:
 	float _k_sign{1.f};	///< +/-1 MC_SEAT_KSIGN
 	float _tau_a{0.f};	///< [s] MC_SEAT_TAU_A, fixed mode only
 	float _T{0.f};		///< [s] MC_SEAT_T, fixed mode only
+	bool _sat_gate{true};	///< MC_SEAT_SATGATE: let allocator saturation freeze the angle
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::MC_SEAT_MODE>)    _param_mc_seat_mode,
@@ -198,6 +213,7 @@ private:
 		(ParamFloat<px4::params::MC_SEAT_THMAX>) _param_mc_seat_thmax,
 		(ParamFloat<px4::params::MC_SEAT_RMIN>)  _param_mc_seat_rmin,
 		(ParamFloat<px4::params::MC_SEAT_TAU_A>) _param_mc_seat_tau_a,
-		(ParamFloat<px4::params::MC_SEAT_T>)     _param_mc_seat_t
+		(ParamFloat<px4::params::MC_SEAT_T>)     _param_mc_seat_t,
+		(ParamInt<px4::params::MC_SEAT_SATGATE>) _param_mc_seat_satgate
 	)
 };

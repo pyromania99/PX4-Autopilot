@@ -123,7 +123,8 @@ Quatf bodyzToAttitude(Vector3f body_z, const float yaw_sp)
 
 CascadedPdController::CascadedPdController(ModuleParams *parent) :
 	MulticopterControllerBase(parent),
-	_trajectory_stage(this)
+	_trajectory_stage(this),
+	_rate_limits(this)
 {
 	CascadedPdController::updateParams();
 	CascadedPdController::reset();
@@ -300,7 +301,7 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 			// normalize, one acos and a handful of trig at gyro rate.
 			bodyzToAttitudeSetpoint(_body_z_setpoint, state, command);
 
-			_rate_setpoint = attitudeToRateSetpoint(state.q);
+			_rate_setpoint = _rate_limits.apply(attitudeToRateSetpoint(state.q));
 			break;
 		}
 
@@ -312,7 +313,7 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 			bodyzToAttitudeSetpoint(commanded_body_z, state, command);
 
 			_thrust_setpoint = command.thrust_body_sp;
-			_rate_setpoint = attitudeToRateSetpoint(state.q);
+			_rate_setpoint = _rate_limits.apply(attitudeToRateSetpoint(state.q));
 			_trajectory_stage.invalidateStage();
 			break;
 		}

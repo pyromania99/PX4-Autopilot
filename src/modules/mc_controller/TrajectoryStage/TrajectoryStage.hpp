@@ -120,7 +120,7 @@ public:
 	 */
 	matrix::Vector3f computeThrustSetpoint(const mc_ctrl::ControllerState &state,
 			const mc_ctrl::ControllerCommand &command,
-			const matrix::Vector3f &acceleration_sp) const;
+			const matrix::Vector3f &acceleration_sp);
 
 	/**
 	 * The heading a heading-referenced attitude setpoint must be anchored on, taken from
@@ -181,6 +181,15 @@ protected:
 	void updateParams() override;
 
 private:
+	/**
+	 * Clamp the equivalent velocity setpoint to the framework's limits, in place.
+	 *
+	 * NaN axes are left alone: they are the ones with no velocity feedback, where there is
+	 * no velocity setpoint to speak of. See the .cpp for where the equivalence comes from
+	 * and how the takeoff ramp rides in on a negative vel_limit_up.
+	 */
+	void limitVelocitySetpoint(const mc_ctrl::ControllerCommand &command, matrix::Vector3f &velocity_sp) const;
+
 	/// Advance the integrator, having already absorbed any hover-thrust change.
 	void updateIntegral(const mc_ctrl::ControllerState &state, int axis, float position_error);
 
@@ -196,6 +205,21 @@ private:
 	void absorbHoverThrustChange(float hover_thrust);
 
 	matrix::Vector3f _integral{};	///< [m/s^2] NED
+
+	/**
+	 * Output saturation seen on the PREVIOUS pass, which is what the integrator's
+	 * anti-windup gate reads. One position cycle stale by construction: the acceleration
+	 * setpoint (and with it the integral) has to exist before the collective can be
+	 * computed from it, so within a single pass the answer is not available yet.
+	 *
+	 * Stock instead runs tracking anti-reset-windup horizontally and a conditional freeze
+	 * vertically (PositionControl.cpp:156-204), both inside one cycle, because there the
+	 * integrator lives downstream of the saturation. Here it is upstream, so this is plain
+	 * conditional integration: stop integrating INTO a limit, keep integrating out of it.
+	 */
+	bool _thrust_saturated_max{false};	///< collective pinned at thrust_max (no more climb)
+	bool _thrust_saturated_min{false};	///< collective pinned at thrust_min (no more descent)
+	bool _lateral_saturated{false};		///< the tilt-limited lateral clamp is active
 
 	/// Telemetry only, for vehicle_local_position_setpoint.
 	matrix::Vector3f _position_setpoint{NAN, NAN, NAN};

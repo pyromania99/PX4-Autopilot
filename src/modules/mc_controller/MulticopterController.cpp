@@ -51,6 +51,7 @@ MulticopterController::MulticopterController() :
 	_reference = new CascadedPdController(this);
 	_controller = _reference;
 	_rate_ctrl_status_pub.advertise();
+	MulticopterController::updateParams();
 }
 
 MulticopterController::~MulticopterController()
@@ -128,6 +129,13 @@ bool MulticopterController::instantiateController(int32_t alg)
 	}
 
 	return true;
+}
+
+void MulticopterController::updateParams()
+{
+	ModuleParams::updateParams();
+
+	_output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
 }
 
 void MulticopterController::handleParameterUpdate()
@@ -486,6 +494,12 @@ void MulticopterController::publishOutput(const mc_ctrl::ControllerOutput &outpu
 		torque_setpoint.xyz[i] = PX4_ISFINITE(output.torque(i)) ? output.torque(i) : 0.f;
 		thrust_setpoint.xyz[i] = PX4_ISFINITE(output.thrust(i)) ? output.thrust(i) : 0.f;
 	}
+
+	// Yaw output low-pass, same placement as stock: after the law, before battery scaling
+	// and publication (MulticopterRateControl.cpp:213). MC_YAW_TQ_CUTOFF <= 0 leaves the
+	// filter's time constant at zero, which makes update() a pass-through, so the parameter
+	// still means "off" exactly as it does in stock.
+	torque_setpoint.xyz[2] = _output_lpf_yaw.update(torque_setpoint.xyz[2], dt);
 
 	// Battery scaling (MulticopterRateControl.cpp:243-258).
 	if (_param_mc_bat_scale_en.get()) {

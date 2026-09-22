@@ -312,10 +312,8 @@ void OutputPredictor::correctOutputStates(const uint64_t time_delayed_us,
 
 	Vector3f delta_ang_error{};
 
-	if (q_err_vec_norm > 1e-9f) {
-		const float angle = 2.f * atan2f(q_err_vec_norm, q_err_shortest(0));
-		delta_ang_error = q_err_vec * (-angle / q_err_vec_norm);
-	}
+	delta_ang_error = -Vector3f(AxisAnglef(q_err_shortest));
+
 
 	/*
 	 * The error is measured in the body frame AT THE DELAYED FUSION HORIZON, but

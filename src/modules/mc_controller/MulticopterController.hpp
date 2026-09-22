@@ -68,6 +68,7 @@
 
 #include <uORB/topics/actuator_controls_status.h>
 #include <uORB/topics/autotune_attitude_control_status.h>
+#include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <uORB/topics/battery_status.h>
 #include <uORB/topics/control_allocator_status.h>
 #include <uORB/topics/hover_thrust_estimate.h>
@@ -106,6 +107,11 @@ public:
 	int print_status() override;
 
 	bool init();
+
+protected:
+	/// Refreshes the yaw output filter's cutoff along with everything else, and cascades to
+	/// the front end, the state provider and the active controller as ModuleParams does.
+	void updateParams() override;
 
 private:
 	void Run() override;
@@ -197,6 +203,17 @@ private:
 	vehicle_control_mode_s _vehicle_control_mode{};
 	vehicle_status_s _vehicle_status{};
 	float _battery_status_scale{0.f};
+
+	/**
+	 * MC_YAW_TQ_CUTOFF, the yaw-torque output filter stock applies right before publishing
+	 * (MulticopterRateControl.cpp:213) to keep rotor-acceleration noise out of the yaw
+	 * channel. It had no counterpart here, so every law in this module published yaw torque
+	 * unfiltered. Sits at the output rather than inside a law because it is a property of
+	 * the airframe's yaw actuation, not of any control law - and because a law's own
+	 * observables (the seat's xd, the pole adapter's reference) must keep seeing the torque
+	 * they commanded, not a filtered version of it.
+	 */
+	AlphaFilter<float> _output_lpf_yaw;
 	uint8_t _takeoff_state{0};
 	hrt_abstime _last_status_publish{0};
 
@@ -218,6 +235,7 @@ private:
 		(ParamInt<px4::params::MC_CTRL_GT>)       _param_mc_ctrl_gt,
 		(ParamInt<px4::params::MC_CTRL_WD_MS>)    _param_mc_ctrl_wd_ms,
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
+		(ParamFloat<px4::params::MC_YAW_TQ_CUTOFF>) _param_mc_yaw_tq_cutoff,
 		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time
 	)
 };

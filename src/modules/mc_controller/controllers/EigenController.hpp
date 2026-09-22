@@ -70,6 +70,8 @@
 
 #pragma once
 
+#include "ActuatorLead.hpp"
+#include "RateLimits.hpp"
 #include "Seat.hpp"
 #include "PoleAdapter.hpp"
 
@@ -166,6 +168,16 @@ private:
 	 * tick, by offsetting the pole angle the eigen block is built from.
 	 */
 	PoleAdapter _pole;
+
+	/// Inverts the rotor pole so the seat is left with a pure delay. MC_LEAD_*.
+	ActuatorLead _lead;
+
+	/**
+	 * MC_ROLLRATE_MAX / MC_PITCHRATE_MAX / MC_YAWRATE_MAX on what the angle stage asks for,
+	 * where stock applies them. Not applied in Acro: there command.rate_sp IS the pilot's
+	 * demand and MC_ACRO_*_MAX has already bounded it upstream.
+	 */
+	RateLimits _rate_limits;
 
 	// Angle-error derivative state. Held between attitude samples rather than
 	// recomputed at gyro rate, where the difference would be quantization noise.
