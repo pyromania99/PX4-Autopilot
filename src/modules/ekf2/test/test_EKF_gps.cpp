@@ -107,6 +107,34 @@ TEST_F(EkfGpsTest, gpsTimeout)
 	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
 }
 
+TEST_F(EkfGpsTest, gnssStrictChecksWhileParked)
+{
+	// GIVEN: a disarmed vehicle on the ground fusing GNSS
+	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
+
+	// WHEN: the number of satellites drops below the minimum
+	_sensor_simulator._gps.setNumberOfSatellites(3);
+
+	// THEN: the strict checks fail and the GNSS fusion stops
+	_sensor_simulator.runSeconds(10);
+	EXPECT_FALSE(_ekf_wrapper.isIntendingGpsFusion());
+}
+
+TEST_F(EkfGpsTest, gnssSimplifiedChecksWhenArmedOnGround)
+{
+	// GIVEN: a vehicle that armed with a healthy GNSS but has not taken off yet
+	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
+	_ekf->set_armed_status(true);
+	_sensor_simulator.runSeconds(1);
+
+	// WHEN: the number of satellites drops below the minimum
+	_sensor_simulator._gps.setNumberOfSatellites(3);
+
+	// THEN: the simplified checks are used and the GNSS fusion continues
+	_sensor_simulator.runSeconds(10);
+	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
+}
+
 TEST_F(EkfGpsTest, gpsFixLoss)
 {
 	// GIVEN:EKF that fuses GPS
@@ -282,4 +310,33 @@ TEST_F(EkfGpsTest, gnssJumpDetectionDRMode)
 	EXPECT_FALSE(_ekf_wrapper.isGnssFaultDetected());
 	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsHeightFusion());
 	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
+}
+
+TEST_F(EkfGpsTest, gnssIntermittentSaccFailureDisablesFusion)
+{
+	// GIVEN: EKF that fuses GPS on the ground after passing the initial checks
+	EXPECT_TRUE(_ekf_wrapper.isIntendingGpsFusion());
+
+	// WHEN: speed accuracy fails most of the time but briefly passes 1 sample every 2s.
+	// Each good sample passes runInitialFixChecks() but run() still returns false because
+	// the last failure is too recent (min_health_time_us = 10s not satisfied).
+	// The fusion must therefore never actually fuse any data.
+	const float bad_sacc = 5.0f;   // fails ekf2_req_sacc (default 1.0 m/s)
+	const float good_sacc = 0.2f;  // passes ekf2_req_sacc
+
+	for (int i = 0; i < 4; i++) {
+		gnssSample gps_data = _sensor_simulator._gps.getData();
+		gps_data.sacc = bad_sacc;
+		_sensor_simulator._gps.setData(gps_data);
+		_sensor_simulator.runSeconds(1.8f);
+
+		gps_data = _sensor_simulator._gps.getData();
+		gps_data.sacc = good_sacc;
+		_sensor_simulator._gps.setData(gps_data);
+		_sensor_simulator.runSeconds(0.2f);  // 1 GPS sample at 5 Hz
+	}
+
+	// THEN: GNSS fusion must be disabled because the checks never truly pass
+	// and reset_timeout_max was exceeded since the last real pass.
+	EXPECT_FALSE(_ekf_wrapper.isIntendingGpsFusion());
 }

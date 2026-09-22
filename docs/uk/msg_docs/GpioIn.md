@@ -10,17 +10,17 @@ GPIO mask and state.
 
 ## Fields
 
-| Назва                          | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| device_id | `uint32` |                                                                  |            | Device id                                                 |
-| state                          | `uint32` |                                                                  |            | pin state mask                                            |
+| Назва                                                    | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_device_id"></a>device_id | `uint32` |                                                                  |            | Device id                                                 |
+| <a id="fld_state"></a>state                              | `uint32` |                                                                  |            | pin state mask                                            |
 
 ## Constants
 
-| Назва                                                            | Тип     | Значення | Опис |
-| ---------------------------------------------------------------- | ------- | -------- | ---- |
-| <a href="#MAX_INSTANCES"></a> MAX_INSTANCES | `uint8` | 8        |      |
+| Назва                                                          | Тип     | Значення | Опис |
+| -------------------------------------------------------------- | ------- | -------- | ---- |
+| <a id="#MAX_INSTANCES"></a> MAX_INSTANCES | `uint8` | 8        |      |
 
 ## Source Message
 

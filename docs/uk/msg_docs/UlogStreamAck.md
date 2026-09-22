@@ -6,21 +6,21 @@ pageClass: is-wide-page
 
 Ack a previously sent ulog_stream message that had. the NEED_ACK flag set.
 
-**TOPICS:** ulog_streamack
+**TOPICS:** ulog_stream_ack
 
 ## Fields
 
-| Назва                             | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| --------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                         | `uint64` |                                                                  |            | time since system start (microseconds) |
-| msg_sequence | `uint16` |                                                                  |            |                                                           |
+| Назва                                                          | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                            | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_msg_sequence"></a>msg_sequence | `uint16` |                                                                  |            |                                                           |
 
 ## Constants
 
-| Назва                                                                                 | Тип     | Значення | Опис                                                                                                                     |
-| ------------------------------------------------------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| <a href="#ACK_TIMEOUT"></a> ACK_TIMEOUT                          | `int32` | 50       | timeout waiting for an ack until we retry to send the message [ms]   |
-| <a href="#ACK_MAX_TRIES"></a> ACK_MAX_TRIES | `int32` | 50       | maximum amount of tries to (re-)send a message, each time waiting ACK_TIMEOUT ms |
+| Назва                                                                               | Тип     | Значення | Опис                                                                                                                     |
+| ----------------------------------------------------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| <a id="#ACK_TIMEOUT"></a> ACK_TIMEOUT                          | `int32` | 50       | timeout waiting for an ack until we retry to send the message [ms]   |
+| <a id="#ACK_MAX_TRIES"></a> ACK_MAX_TRIES | `int32` | 50       | maximum amount of tries to (re-)send a message, each time waiting ACK_TIMEOUT ms |
 
 ## Source Message
 

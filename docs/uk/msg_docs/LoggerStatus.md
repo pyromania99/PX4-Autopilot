@@ -8,29 +8,29 @@ pageClass: is-wide-page
 
 ## Fields
 
-| Назва                                                                          | Тип       | Unit [Frame] | Range/Enum | Опис                                                      |
-| ------------------------------------------------------------------------------ | --------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                                                                      | `uint64`  |                                                                  |            | time since system start (microseconds) |
-| type                                                                           | `uint8`   |                                                                  |            |                                                           |
-| backend                                                                        | `uint8`   |                                                                  |            |                                                           |
-| is_logging                                                | `bool`    |                                                                  |            |                                                           |
-| total_written_kb                     | `float32` |                                                                  |            | total written to log in kiloBytes                         |
-| write_rate_kb_s | `float32` |                                                                  |            | write rate in kiloBytes/s                                 |
-| dropouts                                                                       | `uint32`  |                                                                  |            | number of failed buffer writes due to buffer overflow     |
-| message_gaps                                              | `uint32`  |                                                                  |            | messages misssed                                          |
-| buffer_used_bytes                    | `uint32`  |                                                                  |            | current buffer fill in Bytes                              |
-| buffer_size_bytes                    | `uint32`  |                                                                  |            | total buffer size in Bytes                                |
-| num_messages                                              | `uint8`   |                                                                  |            |                                                           |
+| Назва                                                                                                          | Тип       | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                                            | `uint64`  |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_type"></a>type                                                                                      | `uint8`   |                                                                  |            |                                                           |
+| <a id="fld_backend"></a>backend                                                                                | `uint8`   |                                                                  |            |                                                           |
+| <a id="fld_is_logging"></a>is_logging                                                     | `bool`    |                                                                  |            |                                                           |
+| <a id="fld_total_written_kb"></a>total_written_kb                    | `float32` |                                                                  |            | total written to log in kiloBytes                         |
+| <a id="fld_write_rate_kb_s"></a>write_rate_kb_s | `float32` |                                                                  |            | write rate in kiloBytes/s                                 |
+| <a id="fld_dropouts"></a>dropouts                                                                              | `uint32`  |                                                                  |            | number of failed buffer writes due to buffer overflow     |
+| <a id="fld_message_gaps"></a>message_gaps                                                 | `uint32`  |                                                                  |            | messages misssed                                          |
+| <a id="fld_buffer_used_bytes"></a>buffer_used_bytes                  | `uint32`  |                                                                  |            | current buffer fill in Bytes                              |
+| <a id="fld_buffer_size_bytes"></a>buffer_size_bytes                  | `uint32`  |                                                                  |            | total buffer size in Bytes                                |
+| <a id="fld_num_messages"></a>num_messages                                                 | `uint8`   |                                                                  |            |                                                           |
 
 ## Constants
 
-| Назва                                                                                             | Тип     | Значення | Опис                                                                                         |
-| ------------------------------------------------------------------------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------- |
-| <a href="#LOGGER_TYPE_FULL"></a> LOGGER_TYPE_FULL       | `uint8` | 0        | Normal, full size log                                                                        |
-| <a href="#LOGGER_TYPE_MISSION"></a> LOGGER_TYPE_MISSION | `uint8` | 1        | reduced mission log (e.g. for geotagging) |
-| <a href="#BACKEND_FILE"></a> BACKEND_FILE                                    | `uint8` | 1        |                                                                                              |
-| <a href="#BACKEND_MAVLINK"></a> BACKEND_MAVLINK                              | `uint8` | 2        |                                                                                              |
-| <a href="#BACKEND_ALL"></a> BACKEND_ALL                                      | `uint8` | 3        |                                                                                              |
+| Назва                                                                                           | Тип     | Значення | Опис                                                                                         |
+| ----------------------------------------------------------------------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------- |
+| <a id="#LOGGER_TYPE_FULL"></a> LOGGER_TYPE_FULL       | `uint8` | 0        | Normal, full size log                                                                        |
+| <a id="#LOGGER_TYPE_MISSION"></a> LOGGER_TYPE_MISSION | `uint8` | 1        | reduced mission log (e.g. for geotagging) |
+| <a id="#BACKEND_FILE"></a> BACKEND_FILE                                    | `uint8` | 1        |                                                                                              |
+| <a id="#BACKEND_MAVLINK"></a> BACKEND_MAVLINK                              | `uint8` | 2        |                                                                                              |
+| <a id="#BACKEND_ALL"></a> BACKEND_ALL                                      | `uint8` | 3        |                                                                                              |
 
 ## Source Message
 

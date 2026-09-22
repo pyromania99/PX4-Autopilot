@@ -10,19 +10,19 @@ pageClass: is-wide-page
 
 ## Fields
 
-| Назва                          | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| result                         | `uint8`  |                                                                  |            | One of RESULT\_\*                   |
-| nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
+| Назва                                                    | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_result"></a>result                            | `uint8`  |                                                                  |            | One of RESULT\_\*                   |
+| <a id="fld_nav_state"></a>nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
 
 ## Constants
 
-| Назва                                                                                               | Тип      | Значення | Опис                                           |
-| --------------------------------------------------------------------------------------------------- | -------- | -------- | ---------------------------------------------- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                | `uint32` | 0        |                                                |
-| <a href="#RESULT_SUCCESS"></a> RESULT_SUCCESS                                  | `uint8`  | 0        |                                                |
-| <a href="#RESULT_FAILURE_OTHER"></a> RESULT_FAILURE_OTHER | `uint8`  | 100      | Mode failed (generic error) |
+| Назва                                                                                             | Тип      | Значення | Опис                                           |
+| ------------------------------------------------------------------------------------------------- | -------- | -------- | ---------------------------------------------- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                | `uint32` | 0        |                                                |
+| <a id="#RESULT_SUCCESS"></a> RESULT_SUCCESS                                  | `uint8`  | 0        |                                                |
+| <a id="#RESULT_FAILURE_OTHER"></a> RESULT_FAILURE_OTHER | `uint8`  | 100      | Mode failed (generic error) |
 
 ## Source Message
 

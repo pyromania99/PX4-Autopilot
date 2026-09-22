@@ -6,16 +6,16 @@ pageClass: is-wide-page
 
 Глобальний набір точки встановлення у форматі координат WGS84. Ось наступні три способи вказівань (або просто наступні два або один).
 
-**TOPICS:** position_setpointtriplet
+**TOPICS:** position_setpoint_triplet
 
 ## Fields
 
-| Назва     | Тип                | Unit [Frame] | Range/Enum | Опис                                                      |
-| --------- | ------------------ | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp | `uint64`           |                                                                  |            | time since system start (microseconds) |
-| previous  | `PositionSetpoint` |                                                                  |            |                                                           |
-| current   | `PositionSetpoint` |                                                                  |            |                                                           |
-| next      | `PositionSetpoint` |                                                                  |            |                                                           |
+| Назва                               | Тип                | Unit [Frame] | Range/Enum | Опис                                                      |
+| ----------------------------------- | ------------------ | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64`           |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_previous"></a>previous   | `PositionSetpoint` |                                                                  |            |                                                           |
+| <a id="fld_current"></a>current     | `PositionSetpoint` |                                                                  |            |                                                           |
+| <a id="fld_next"></a>next           | `PositionSetpoint` |                                                                  |            |                                                           |
 
 ## Source Message
 

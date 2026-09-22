@@ -48,6 +48,7 @@
 #include <drivers/drv_hrt.h>
 #include <mathlib/math/Limits.hpp>
 #include <mathlib/math/Functions.hpp>
+#include <Sticks.hpp>
 
 using namespace matrix;
 
@@ -92,6 +93,10 @@ MulticopterAttitudeControl::parameters_updated()
 
 	_attitude_control.setRateLimit(Vector3f(radians(_param_mc_rollrate_max.get()), radians(_param_mc_pitchrate_max.get()),
 						radians(_param_mc_yawrate_max.get())));
+
+	_attitude_control.setRefModelFrequency(_param_mc_ref_w_n.get());
+	_attitude_control.setFeedForwardGain(_param_mc_ref_ff.get());
+	_attitude_control.setFeedForwardLimit(math::radians(_param_mc_ref_ff_max.get()));
 }
 
 void
@@ -150,7 +155,14 @@ MulticopterAttitudeControl::Run()
 				_vtol_tailsitter = vehicle_status.is_vtol_tailsitter;
 
 				const bool armed = (vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED);
-				_spooled_up = armed && hrt_elapsed_time(&vehicle_status.armed_time) > _param_com_spoolup_time.get() * 1_s;
+
+				if (!armed) {
+					_spooled_up = false;
+
+				} else if (!_spooled_up) {
+					// Keep the spool-up state latched until disarm.
+					_spooled_up = hrt_elapsed_time(&vehicle_status.armed_time) > _param_com_spoolup_time.get() * 1_s;
+				}
 			}
 		}
 
@@ -200,7 +212,11 @@ MulticopterAttitudeControl::Run()
 				if (_vehicle_attitude_setpoint_sub.copy(&vehicle_attitude_setpoint)
 				    && (vehicle_attitude_setpoint.timestamp > _last_attitude_setpoint)) {
 
-					_attitude_control.setAttitudeSetpoint(Quatf(vehicle_attitude_setpoint.q_d), vehicle_attitude_setpoint.yaw_sp_move_rate);
+					const float setpoint_dt = (_last_attitude_setpoint > 0)
+								  ? (vehicle_attitude_setpoint.timestamp - _last_attitude_setpoint) * 1e-6f
+								  : -1.f;
+					_attitude_control.setAttitudeSetpoint(Quatf(vehicle_attitude_setpoint.q_d),
+									      vehicle_attitude_setpoint.yaw_sp_move_rate, setpoint_dt);
 					_thrust_setpoint_body = Vector3f(vehicle_attitude_setpoint.thrust_body);
 					_last_attitude_setpoint = vehicle_attitude_setpoint.timestamp;
 				}

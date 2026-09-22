@@ -8,18 +8,18 @@ pageClass: is-wide-page
 
 ## Fields
 
-| Назва                                 | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                          |
-| ------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
-| timestamp                             | `uint64`     |                                                                  |            | time since system start (microseconds)                                     |
-| timestamp_sample | `uint64`     |                                                                  |            | timestamp of the data sample on which this message is based (microseconds) |
-| xyz                                   | `float32[3]` |                                                                  |            | Bias corrected angular velocity about the FRD body frame XYZ-axis in rad/s                    |
-| xyz_derivative   | `float32[3]` |                                                                  |            | angular acceleration about the FRD body frame XYZ-axis in rad/s^2                             |
+| Назва                                                                  | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                          |
+| ---------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`     |                                                                  |            | time since system start (microseconds)                                     |
+| <a id="fld_timestamp_sample"></a>timestamp_sample | `uint64`     |                                                                  |            | timestamp of the data sample on which this message is based (microseconds) |
+| <a id="fld_xyz"></a>xyz                                                | `float32[3]` |                                                                  |            | Bias corrected angular velocity about the FRD body frame XYZ-axis in rad/s                    |
+| <a id="fld_xyz_derivative"></a>xyz_derivative     | `float32[3]` |                                                                  |            | angular acceleration about the FRD body frame XYZ-axis in rad/s^2                             |
 
 ## Constants
 
-| Назва                                                                | Тип      | Значення | Опис |
-| -------------------------------------------------------------------- | -------- | -------- | ---- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
+| Назва                                                              | Тип      | Значення | Опис |
+| ------------------------------------------------------------------ | -------- | -------- | ---- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
 
 ## Source Message
 

@@ -43,6 +43,15 @@ then
 fi
 
 #
+# Start Vision Target Estimator.
+#
+
+if param greater -s VTE_EN 0
+then
+	vision_target_estimator start
+fi
+
+#
 # Start Multicopter Land Detector.
 #
 land_detector start multicopter

@@ -10,17 +10,17 @@ A logging message, output with PX4_WARN, PX4_ERR, PX4_INFO.
 
 ## Fields
 
-| 参数名       | 类型          | Unit [Frame] | Range/Enum | 描述                                                                          |
-| --------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------- |
-| timestamp | `uint64`    |                                                                  |            | time since system start (microseconds)                   |
-| severity  | `uint8`     |                                                                  |            | log level (same as in the linux kernel, starting with 0) |
-| text      | `char[127]` |                                                                  |            |                                                                             |
+| 参数名                                 | 类型          | Unit [Frame] | Range/Enum | 描述                                                                          |
+| ----------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64`    |                                                                  |            | time since system start (microseconds)                   |
+| <a id="fld_severity"></a>severity   | `uint8`     |                                                                  |            | log level (same as in the linux kernel, starting with 0) |
+| <a id="fld_text"></a>text           | `char[127]` |                                                                  |            |                                                                             |
 
 ## Constants
 
-| 参数名                                                                                         | 类型      | 值 | 描述 |
-| ------------------------------------------------------------------------------------------- | ------- | - | -- |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 4 |    |
+| 参数名                                                                                       | 类型      | 值 | 描述 |
+| ----------------------------------------------------------------------------------------- | ------- | - | -- |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 4 |    |
 
 ## Source Message
 

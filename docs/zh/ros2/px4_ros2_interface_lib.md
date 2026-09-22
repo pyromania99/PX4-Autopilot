@@ -7,6 +7,10 @@ Experimental
 在撰写本文时，PX4 ROS 2 接口库的部分内容仍处于试验阶段，因此可能会发生变动。
 :::
 
+:::info
+When using `rmw_zenoh`, the PX4 ROS 2 Interface Library requires ROS 2 Jazzy or later, and is not compatible with ROS 2 Humble or earlier.
+:::
+
 The [PX4 ROS 2 Interface Library](https://github.com/Auterion/px4-ros2-interface-lib) is a C++ library (with Python bindings) that simplifies controlling and interacting with PX4 from ROS 2.
 
 该库为开发者提供了两个高级接口。
@@ -52,4 +56,4 @@ The [PX4 ROS 2 Interface Library](https://github.com/Auterion/px4-ros2-interface
 向 PX4 提交拉取请求（pull request）时，持续集成（CI）会运行该库的集成测试
 这些测试用于验证模式注册、故障保护（failsafes）和模式替换功能是否按预期工作。
 
-欲了解更多信息，请访问[PX4 ROS2 接口库集成测试](../test_and_ci/integration_testing_px4_ros2_interface.md)。
+For more information see [PX4 ROS 2 Interface Library Integration Testing](../test_and_ci/integration_testing_px4_ros2_interface.md).

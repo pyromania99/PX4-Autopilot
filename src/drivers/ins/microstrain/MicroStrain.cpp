@@ -75,6 +75,7 @@ MicroStrain::MicroStrain(const char *uart_port) :
 	_px4_mag.set_device_id(_dev_id);
 
 	_sensor_baro.device_id = _dev_id;
+	_sensor_baro.is_external = true;
 	_sensor_baro.pressure = 0;
 	_sensor_baro.temperature = 0;
 	_sensor_baro.error_count = 0;
@@ -195,7 +196,9 @@ mip_cmd_result MicroStrain::forceIdle()
 	uint8_t set_to_idle_tries = 0;
 
 	while (set_to_idle_tries++ < 3) {
-		if (mip_cmd_result_is_ack((res = mip_base_set_idle(&_device)))) {
+		res = mip_base_set_idle(&_device);
+
+		if (mip_cmd_result_is_ack(res)) {
 			break;
 
 		} else {
@@ -210,7 +213,7 @@ int MicroStrain::connectAtBaud(int32_t baud)
 {
 	if (device_uart.isOpen()) {
 		if (device_uart.setBaudrate(baud) == false) {
-			PX4_ERR("Failed to set UART %lu baud", baud);
+			PX4_ERR("Failed to set UART %lu baud", static_cast<unsigned long>(baud));
 		}
 
 	} else {
@@ -220,7 +223,7 @@ int MicroStrain::connectAtBaud(int32_t baud)
 		}
 
 		if (device_uart.setBaudrate(baud) == false) {
-			PX4_ERR("Failed to set UART %lu baud", baud);
+			PX4_ERR("Failed to set UART %lu baud", static_cast<unsigned long>(baud));
 			return PX4_ERROR;
 		}
 
@@ -230,11 +233,13 @@ int MicroStrain::connectAtBaud(int32_t baud)
 		}
 	}
 
-	PX4_INFO("Serial Port %s with baud of %lu baud", (device_uart.isOpen() ? "CONNECTED" : "NOT CONNECTED"), baud);
+	PX4_INFO("Serial Port %s with baud of %lu baud",
+		 (device_uart.isOpen() ? "CONNECTED" : "NOT CONNECTED"),
+		 static_cast<unsigned long>(baud));
 
 	// Re-init the interface with the correct timeouts
 	mip_interface_init(&_device, _parse_buffer, sizeof(_parse_buffer), mip_timeout_from_baudrate(baud) * 1_ms, 250_ms,
-			   &mipInterfaceUserSendToDevice, &mipInterfaceUserRecvFromDevice, &mip_interface_default_update, NULL);
+			   &mipInterfaceUserSendToDevice, &mipInterfaceUserRecvFromDevice, &mip_interface_default_update, nullptr);
 
 	if (!mip_cmd_result_is_ack(forceIdle())) {
 		PX4_ERR("Could not set device to idle");
@@ -827,7 +832,9 @@ mip_cmd_result MicroStrain::configureGnssAiding()
 
 		// Sets up the GNSS aiding source
 		if (supportsDescriptor(MIP_FILTER_CMD_DESC_SET, MIP_CMD_DESC_FILTER_GNSS_SOURCE_CONTROL)) {
-			if (!mip_cmd_result_is_ack(res = mip_filter_write_gnss_source(&_device, (uint8_t)_param_ms_gnss_aid_src_ctrl.get()))) {
+			res = mip_filter_write_gnss_source(&_device, (uint8_t)_param_ms_gnss_aid_src_ctrl.get());
+
+			if (!mip_cmd_result_is_ack(res)) {
 				PX4_ERR("Could not write the gnss aiding source");
 				return res;
 			}
@@ -838,9 +845,11 @@ mip_cmd_result MicroStrain::configureGnssAiding()
 
 				// Sets up the aiding frame for the external source
 				if (supportsDescriptor(MIP_AIDING_CMD_DESC_SET, MIP_CMD_DESC_AIDING_FRAME_CONFIG)) {
-					if (!mip_cmd_result_is_ack(res = mip_aiding_write_frame_config(&_device, 1,
-									 MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER, false,
-									 gnss_antenna_offset1, &rotation_gnss))) {
+					res = mip_aiding_write_frame_config(&_device, 1,
+									    MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER, false,
+									    gnss_antenna_offset1, &rotation_gnss);
+
+					if (!mip_cmd_result_is_ack(res)) {
 						PX4_ERR("Could not write aiding frame config");
 						return res;
 					}
@@ -870,20 +879,23 @@ mip_cmd_result MicroStrain::configureGnssAiding()
 		}
 
 		// Selectively enables dual antenna heading as an aiding measurement
-		if (!mip_cmd_result_is_ack(res = enableAidingSource(
-				MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_GNSS_HEADING,
-				_param_ms_int_heading_en.get(),
-				0, 0, nullptr, mip_aiding_frame_config_command_rotation{0},
-				0, _int_aiding, "dual antenna heading"))) {
+		res = enableAidingSource(MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_GNSS_HEADING,
+					 _param_ms_int_heading_en.get(),
+					 0, 0, nullptr, mip_aiding_frame_config_command_rotation{},
+					 0, _int_aiding, "dual antenna heading");
+
+		if (!mip_cmd_result_is_ack(res)) {
 			return res;
 		}
 	}
 
 	// Otherwise sets up the aiding frame
 	else if (supportsDescriptor(MIP_AIDING_CMD_DESC_SET, MIP_CMD_DESC_AIDING_FRAME_CONFIG)) {
-		if (!mip_cmd_result_is_ack(res = mip_aiding_write_frame_config(&_device, 1,
-						 MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER, false,
-						 gnss_antenna_offset1, &rotation_gnss))) {
+		res = mip_aiding_write_frame_config(&_device, 1,
+						    MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER, false,
+						    gnss_antenna_offset1, &rotation_gnss);
+
+		if (!mip_cmd_result_is_ack(res)) {
 			PX4_ERR("Could not write aiding frame config");
 			return res;
 		}
@@ -902,47 +914,51 @@ mip_cmd_result MicroStrain::configureAidingSources()
 	mip_cmd_result res;
 
 	// Selectively turn on internal magnetometer as an aiding source
-	if (!mip_cmd_result_is_ack(res = enableAidingSource(
-			MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_MAGNETOMETER,
-			_param_ms_int_mag_en.get(),
-			0, 0, nullptr, mip_aiding_frame_config_command_rotation{0},
-			0, _int_aiding, "internal magnetometer"))) {
+	res = enableAidingSource(MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_MAGNETOMETER,
+				 _param_ms_int_mag_en.get(),
+				 0, 0, nullptr, mip_aiding_frame_config_command_rotation{},
+				 0, _int_aiding, "internal magnetometer");
+
+	if (!mip_cmd_result_is_ack(res)) {
 		return res;
 	}
 
 	// Selectively turn on external magnetometer as an aiding source
-	if (!mip_cmd_result_is_ack(res = enableAidingSource(
-			MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_EXTERNAL_MAGNETOMETER,
-			_param_ms_ext_mag_en.get(),
-			2, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
-			ext_mag_offset, rotation_ext_mag,
-			MIP_CMD_DESC_AIDING_MAGNETIC_FIELD,
-			_ext_mag_aiding,
-			"external magnetometer"))) {
+	res = enableAidingSource(MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_EXTERNAL_MAGNETOMETER,
+				 _param_ms_ext_mag_en.get(),
+				 2, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
+				 ext_mag_offset, rotation_ext_mag,
+				 MIP_CMD_DESC_AIDING_MAGNETIC_FIELD,
+				 _ext_mag_aiding,
+				 "external magnetometer");
+
+	if (!mip_cmd_result_is_ack(res)) {
 		return res;
 	}
 
 	// Selectively turn on body frame velocity as an aiding source
-	if (!mip_cmd_result_is_ack(res = enableAidingSource(
-			MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_VEHICLE_FRAME_VEL,
-			_param_ms_ext_opt_flow_en.get(),
-			3, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
-			optical_flow_offset, rotation_oflow,
-			MIP_CMD_DESC_AIDING_VEL_ODOM,
-			_ext_optical_flow_aiding,
-			"optical flow"))) {
+	res = enableAidingSource(MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_VEHICLE_FRAME_VEL,
+				 _param_ms_ext_opt_flow_en.get(),
+				 3, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
+				 optical_flow_offset, rotation_oflow,
+				 MIP_CMD_DESC_AIDING_VEL_ODOM,
+				 _ext_optical_flow_aiding,
+				 "optical flow");
+
+	if (!mip_cmd_result_is_ack(res)) {
 		return res;
 	}
 
 	// Selectively turn on external heading as an aiding source
-	if (!mip_cmd_result_is_ack(res = enableAidingSource(
-			MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_EXTERNAL_HEADING,
-			_param_ms_ext_heading_en.get(),
-			4, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
-			ext_heading_offset, rotation_ext_heading,
-			MIP_CMD_DESC_AIDING_HEADING_TRUE,
-			_ext_heading_aiding,
-			"external heading"))) {
+	res = enableAidingSource(MIP_FILTER_AIDING_MEASUREMENT_ENABLE_COMMAND_AIDING_SOURCE_EXTERNAL_HEADING,
+				 _param_ms_ext_heading_en.get(),
+				 4, MIP_AIDING_FRAME_CONFIG_COMMAND_FORMAT_EULER,
+				 ext_heading_offset, rotation_ext_heading,
+				 MIP_CMD_DESC_AIDING_HEADING_TRUE,
+				 _ext_heading_aiding,
+				 "external heading");
+
+	if (!mip_cmd_result_is_ack(res)) {
 		return res;
 	}
 
@@ -989,7 +1005,7 @@ bool MicroStrain::initializeIns()
 
 	for (auto &baudrate : BAUDRATES) {
 		if (connectAtBaud(baudrate) == PX4_OK) {
-			PX4_INFO("found baudrate %lu", baudrate);
+			PX4_INFO("found baudrate %lu", static_cast<unsigned long>(baudrate));
 			is_connected = true;
 			break;
 		}
@@ -1009,7 +1025,9 @@ bool MicroStrain::initializeIns()
 	// Setting the device baudrate to the desired value
 	PX4_INFO("Setting the baud to desired baud rate");
 
-	if (!mip_cmd_result_is_ack(res = writeBaudRate(DESIRED_BAUDRATE, 1))) {
+	res = writeBaudRate(DESIRED_BAUDRATE, 1);
+
+	if (!mip_cmd_result_is_ack(res)) {
 		PX4_ERR("Could not set the baudrate!");
 		return false;
 	}
@@ -1018,18 +1036,22 @@ bool MicroStrain::initializeIns()
 
 	// Connecting using the desired baudrate
 	if (connectAtBaud(DESIRED_BAUDRATE) != PX4_OK) {
-		PX4_ERR("Could not Connect at %lu", DESIRED_BAUDRATE);
+		PX4_ERR("Could not Connect at %lu", static_cast<unsigned long>(DESIRED_BAUDRATE));
 		return false;
 	}
 
 	// Configure IMU ranges
-	if (!mip_cmd_result_is_ack(res = configureImuRange())) {
+	res = configureImuRange();
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not configure IMU range");
 		return false;
 	}
 
 	// Configure the IMU message formt based on what descriptors are supported
-	if (!mip_cmd_result_is_ack(res = configureImuMessageFormat())) {
+	res = configureImuMessageFormat();
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not write IMU message format");
 		return false;
 	}
@@ -1040,7 +1062,9 @@ bool MicroStrain::initializeIns()
 					       this);
 
 	// Configure the Filter message format based on what descriptors are supported
-	if (!mip_cmd_result_is_ack(res = configureFilterMessageFormat())) {
+	res = configureFilterMessageFormat();
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not write filter message format");
 		return false;
 	}
@@ -1051,7 +1075,9 @@ bool MicroStrain::initializeIns()
 					       this);
 
 	// Configure the GNSS1 message format based on what descriptors are supported
-	if (!mip_cmd_result_is_ack(res = configureGnssMessageFormat(MIP_GNSS1_DATA_DESC_SET))) {
+	res = configureGnssMessageFormat(MIP_GNSS1_DATA_DESC_SET);
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not write GNSS1 message format");
 	}
 
@@ -1061,7 +1087,9 @@ bool MicroStrain::initializeIns()
 					       this);
 
 	// Configure the GNSS2 message format based on what descriptors are supported
-	if (!mip_cmd_result_is_ack(res = configureGnssMessageFormat(MIP_GNSS2_DATA_DESC_SET))) {
+	res = configureGnssMessageFormat(MIP_GNSS2_DATA_DESC_SET);
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not write GNSS2 message format");
 	}
 
@@ -1071,13 +1099,17 @@ bool MicroStrain::initializeIns()
 					       this);
 
 	// Configure the aiding sources based on what the sensor supports
-	if (!mip_cmd_result_is_ack(res = configureAidingSources())) {
+	res = configureAidingSources();
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not configure aiding frames!");
 		return false;
 	}
 
 	// Initialize the filter
-	if (!mip_cmd_result_is_ack(res = writeFilterInitConfig())) {
+	res = writeFilterInitConfig();
+
+	if (!mip_cmd_result_is_ack(res)) {
 		MS_PX4_ERROR(res, "Could not configure filter initialization!");
 		return false;
 	}
@@ -1086,9 +1118,12 @@ bool MicroStrain::initializeIns()
 	if (_param_ms_svt_en.get() && supportsDescriptor(MIP_3DM_CMD_DESC_SET, MIP_CMD_DESC_3DM_SENSOR2VEHICLE_TRANSFORM_EUL)) {
 		PX4_DEBUG("Writing SVT");
 
-		if (!mip_cmd_result_is_ack(res = mip_3dm_write_sensor_2_vehicle_transform_euler(&_device,
-						 math::radians<float>(rotation_sens.euler[0]),
-						 math::radians<float>(rotation_sens.euler[1]), math::radians<float>(rotation_sens.euler[2])))) {
+		res = mip_3dm_write_sensor_2_vehicle_transform_euler(&_device,
+				math::radians<float>(rotation_sens.euler[0]),
+				math::radians<float>(rotation_sens.euler[1]),
+				math::radians<float>(rotation_sens.euler[2]));
+
+		if (!mip_cmd_result_is_ack(res)) {
 			MS_PX4_ERROR(res, "Could not set sensor-to-vehicle transformation!");
 			return false;
 		}
@@ -1098,7 +1133,9 @@ bool MicroStrain::initializeIns()
 	if (supportsDescriptor(MIP_FILTER_CMD_DESC_SET, MIP_CMD_DESC_FILTER_RESET_FILTER)) {
 		PX4_DEBUG("Reseting filter");
 
-		if (!mip_cmd_result_is_ack(res = mip_filter_reset(&_device))) {
+		res = mip_filter_reset(&_device);
+
+		if (!mip_cmd_result_is_ack(res)) {
 			MS_PX4_ERROR(res, "Could not reset the filter!");
 			return false;
 		}
@@ -1107,8 +1144,10 @@ bool MicroStrain::initializeIns()
 	if (supportsDescriptor(MIP_3DM_CMD_DESC_SET, MIP_CMD_DESC_3DM_CONTROL_DATA_STREAM)) {
 		PX4_DEBUG("Writing datastream control");
 
-		if (!mip_cmd_result_is_ack(res = mip_3dm_write_datastream_control(&_device,
-						 MIP_3DM_DATASTREAM_CONTROL_COMMAND_ALL_STREAMS, true))) {
+		res = mip_3dm_write_datastream_control(&_device,
+						       MIP_3DM_DATASTREAM_CONTROL_COMMAND_ALL_STREAMS, true);
+
+		if (!mip_cmd_result_is_ack(res)) {
 			MS_PX4_ERROR(res, "Could not enable the data stream");
 			return false;
 		}
@@ -1118,7 +1157,9 @@ bool MicroStrain::initializeIns()
 	if (supportsDescriptor(MIP_BASE_CMD_DESC_SET, MIP_CMD_DESC_BASE_RESUME)) {
 		PX4_DEBUG("Resuming device");
 
-		if (!mip_cmd_result_is_ack(res = mip_base_resume(&_device))) {
+		res = mip_base_resume(&_device);
+
+		if (!mip_cmd_result_is_ack(res)) {
 			MS_PX4_ERROR(res, "Could not resume the device!");
 			return false;
 		}
@@ -1688,9 +1729,9 @@ void MicroStrain::gnssCallback(void *user, const mip_packet *packet, mip::Timest
 
 		gps.rtcm_injection_rate = 0;
 		gps.selected_rtcm_instance = 0;
-		gps.rtcm_crc_failed = 0;
+		gps.corrections_crc_failed = 0;
 
-		gps.rtcm_msg_used = 0;
+		gps.corrections_msg_used = 0;
 
 		gps.timestamp = hrt_absolute_time();
 
@@ -1723,7 +1764,7 @@ void MicroStrain::initializeRefPos()
 	PX4_DEBUG("Reference position initialized");
 }
 
-void MicroStrain::updateGeoidHeight(float geoid_height, float t)
+void MicroStrain::updateGeoidHeight(float geoid_height, hrt_abstime t)
 {
 	// Updates the low pass filter for geoid height
 	if (_last_geoid_height_update_us == 0) {
@@ -1731,8 +1772,7 @@ void MicroStrain::updateGeoidHeight(float geoid_height, float t)
 		_last_geoid_height_update_us = t;
 
 	} else if (t > _last_geoid_height_update_us) {
-		const float dt = 1e-6f * (t - _last_geoid_height_update_us);
-		_geoid_height_lpf.setParameters(dt, kGeoidHeightLpfTimeConstant);
+		_geoid_height_lpf.setParameters(t - _last_geoid_height_update_us, kGeoidHeightLpfTimeConstant);
 		_geoid_height_lpf.update(geoid_height);
 		_last_geoid_height_update_us = t;
 	}
@@ -1966,8 +2006,8 @@ int MicroStrain::print_usage(const char *reason)
 MicroStrain by HBK Inertial Sensor Driver.
 Currently supports the following sensors:
 
--[CV7-AR](https://www.hbkworld.com/en/products/transducers/inertial-sensors/vertical-reference-units--vru-/3dm-cv7-ar)
--[CV7-AHRS](https://www.hbkworld.com/en/products/transducers/inertial-sensors/attitude-and-heading-reference-systems--ahrs-/3dm-cv7-ahrs)
+-[CV7-AR](https://www.hbkworld.com/en/products/transducers/inertial-sensors/vertical-reference/3dm-cv7-ar)
+-[CV7-AHRS](https://www.hbkworld.com/en/products/transducers/inertial-sensors/attitude-and-heading/3dm-cv7-ahrs)
 -[CV7-INS](https://www.hbkworld.com/en/products/transducers/inertial-sensors/navigation/3dm-cv7-ins)
 -[CV7-GNSS/INS](https://www.hbkworld.com/en/products/transducers/inertial-sensors/navigation/3dm-cv7-gnss-ins)
 

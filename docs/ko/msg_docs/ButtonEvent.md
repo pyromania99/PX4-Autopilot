@@ -8,16 +8,16 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 명칭        | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
-| --------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp | `uint64` |                                                                  |            | time since system start (microseconds) |
-| triggered | `bool`   |                                                                  |            | Set to true if the event is triggered                     |
+| 명칭                                  | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_triggered"></a>triggered | `bool`   |                                                                  |            | Set to true if the event is triggered                     |
 
 ## Constants
 
-| 명칭                                                                                          | 형식      | Value | 설명 |
-| ------------------------------------------------------------------------------------------- | ------- | ----- | -- |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 2     |    |
+| 명칭                                                                                        | 형식      | Value | 설명 |
+| ----------------------------------------------------------------------------------------- | ------- | ----- | -- |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 2     |    |
 
 ## Source Message
 

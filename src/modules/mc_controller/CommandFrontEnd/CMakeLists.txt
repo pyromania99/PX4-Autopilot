@@ -43,8 +43,10 @@ target_include_directories(McControllerCommandFrontEnd PUBLIC ${CMAKE_CURRENT_SO
 target_link_libraries(McControllerCommandFrontEnd PUBLIC MulticopterControllerApi McManualMapping Takeoff SlewRate)
 
 # Links commander's own mode_util so the level truth table cannot drift from
-# commander. Unit gtest: nothing here needs the parameter system or uORB runtime.
-px4_add_unit_gtest(SRC ControlLevelResolverTest.cpp
+# commander. Functional rather than unit gtest: mode_util now compiles
+# setpoint_types.cpp, which logs, so the test needs px4_platform for
+# px4_log_modulename. Nothing here uses the parameter system or the uORB runtime.
+px4_add_functional_gtest(SRC ControlLevelResolverTest.cpp
 	LINKLIBS McControllerCommandFrontEnd MulticopterControllerApi mode_util
 	INCLUDES ${PX4_SOURCE_DIR}/src/modules/commander)
 

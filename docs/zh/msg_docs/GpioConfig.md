@@ -10,29 +10,29 @@ GPIO configuration.
 
 ## Fields
 
-| 参数名                            | 类型       | Unit [Frame] | Range/Enum | 描述                                                        |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| device_id | `uint32` |                                                                  |            | Device id                                                 |
-| mask                           | `uint32` |                                                                  |            | Pin mask                                                  |
-| state                          | `uint32` |                                                                  |            | Initial pin output state                                  |
-| config                         | `uint32` |                                                                  |            |                                                           |
+| 参数名                                                      | 类型       | Unit [Frame] | Range/Enum | 描述                                                        |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_device_id"></a>device_id | `uint32` |                                                                  |            | Device id                                                 |
+| <a id="fld_mask"></a>mask                                | `uint32` |                                                                  |            | Pin mask                                                  |
+| <a id="fld_state"></a>state                              | `uint32` |                                                                  |            | Initial pin output state                                  |
+| <a id="fld_config"></a>config                            | `uint32` |                                                                  |            |                                                           |
 
 ## Constants
 
-| 参数名                                                                                                        | 类型       | 值   | 描述     |
-| ---------------------------------------------------------------------------------------------------------- | -------- | --- | ------ |
-| <a href="#INPUT			"></a> INPUT                                                                             | `uint32` | 0   | 0x0000 |
-| <a href="#OUTPUT			"></a> OUTPUT                                                                           | `uint32` | 1   | 0x0001 |
-| <a href="#PULLUP			"></a> PULLUP                                                                           | `uint32` | 16  | 0x0010 |
-| <a href="#PULLDOWN			"></a> PULLDOWN                                                                       | `uint32` | 32  | 0x0020 |
-| <a href="#OPENDRAIN		"></a> OPENDRAIN                                                                      | `uint32` | 256 | 0x0100 |
-| <a href="#INPUT_FLOATING		"></a> INPUT_FLOATING                                       | `uint32` | 0   | 0x0000 |
-| <a href="#INPUT_PULLUP		"></a> INPUT_PULLUP                                           | `uint32` | 16  | 0x0010 |
-| <a href="#INPUT_PULLDOWN		"></a> INPUT_PULLDOWN                                       | `uint32` | 32  | 0x0020 |
-| <a href="#OUTPUT_PUSHPULL		"></a> OUTPUT_PUSHPULL                                     | `uint32` | 0   | 0x0000 |
-| <a href="#OUTPUT_OPENDRAIN		"></a> OUTPUT_OPENDRAIN                                   | `uint32` | 256 | 0x0100 |
-| <a href="#OUTPUT_OPENDRAIN_PULLUP	"></a> OUTPUT_OPENDRAIN_PULLUP | `uint32` | 272 | 0x0110 |
+| 参数名                                                                                                     | 类型       | 值   | 描述     |
+| ------------------------------------------------------------------------------------------------------- | -------- | --- | ------ |
+| <a id="#INPUT"></a> INPUT                                                                               | `uint32` | 0   | 0x0000 |
+| <a id="#OUTPUT"></a> OUTPUT                                                                             | `uint32` | 1   | 0x0001 |
+| <a id="#PULLUP"></a> PULLUP                                                                             | `uint32` | 16  | 0x0010 |
+| <a id="#PULLDOWN"></a> PULLDOWN                                                                         | `uint32` | 32  | 0x0020 |
+| <a id="#OPENDRAIN"></a> OPENDRAIN                                                                       | `uint32` | 256 | 0x0100 |
+| <a id="#INPUT_FLOATING"></a> INPUT_FLOATING                                        | `uint32` | 0   | 0x0000 |
+| <a id="#INPUT_PULLUP"></a> INPUT_PULLUP                                            | `uint32` | 16  | 0x0010 |
+| <a id="#INPUT_PULLDOWN"></a> INPUT_PULLDOWN                                        | `uint32` | 32  | 0x0020 |
+| <a id="#OUTPUT_PUSHPULL"></a> OUTPUT_PUSHPULL                                      | `uint32` | 0   | 0x0000 |
+| <a id="#OUTPUT_OPENDRAIN"></a> OUTPUT_OPENDRAIN                                    | `uint32` | 256 | 0x0100 |
+| <a id="#OUTPUT_OPENDRAIN_PULLUP"></a> OUTPUT_OPENDRAIN_PULLUP | `uint32` | 272 | 0x0110 |
 
 ## Source Message
 

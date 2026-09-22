@@ -79,3 +79,1237 @@ parameters:
         min: 5
         max: 500
         category: System
+
+      MC_PD_XY_P:
+        description:
+          short: Cascaded PD horizontal position gain
+          long: |
+            Desired horizontal acceleration per metre of horizontal position error.
+        type: float
+        default: 0.5
+        min: 0.0
+        max: 5.0
+        decimal: 2
+        increment: 0.01
+
+      MC_PD_XY_D:
+        description:
+          short: Cascaded PD horizontal velocity gain
+          long: |
+            Desired horizontal acceleration per m/s of horizontal velocity error. This is the
+            damping term: it acts on the filtered estimator velocity, not on a numerical
+            derivative of the position error.
+        type: float
+        default: 1.0
+        min: 0.0
+        max: 10.0
+        decimal: 2
+        increment: 0.01
+
+      MC_PD_Z_P:
+        description:
+          short: Cascaded PD vertical position gain
+          long: |
+            Desired vertical acceleration per metre of altitude error.
+
+            The default is stock's altitude cascade collapsed into one gain:
+            MPC_Z_P * MPC_Z_VEL_P_ACC = 1.0 * 4.0.
+
+            The Isaac Sim prototype used 15.0, which is ~4x stiffer and saturates the
+            collective on any sizeable altitude step.
+        type: float
+        default: 4.0
+        min: 0.0
+        max: 30.0
+        decimal: 2
+        increment: 0.1
+
+      MC_PD_Z_D:
+        description:
+          short: Cascaded PD vertical velocity gain
+          long: |
+            Desired vertical acceleration per m/s of climb rate error.
+
+            The default is stock's MPC_Z_VEL_P_ACC. The Isaac Sim prototype used 8.0.
+        type: float
+        default: 4.0
+        min: 0.0
+        max: 20.0
+        decimal: 2
+        increment: 0.1
+
+      MC_PD_ATT_P:
+        description:
+          short: Cascaded PD attitude gain
+          long: |
+            Normalized roll/pitch torque per radian of geometric attitude error. Roll and pitch
+            share one gain; yaw has no proportional term at all.
+
+            The default is stock's two-stage cascade collapsed into one:
+            MC_ROLLRATE_P * MC_ROLL_P = 0.15 * 4.0. Note the effective attitude gain is
+            MC_PD_ATT_P / MC_PD_ATT_D, so this must be re-derived whenever MC_PD_ATT_D
+            changes if you want to keep parity with a given MC_ROLL_P.
+        type: float
+        default: 0.6
+        min: 0.0
+        max: 10.0
+        decimal: 3
+        increment: 0.01
+
+      MC_PD_ATT_D:
+        description:
+          short: Cascaded PD attitude rate damping gain
+          long: |
+            Normalized roll/pitch torque per rad/s of body rate. Also acts as the rate gain in
+            Acro, where there is no attitude stage above it.
+
+            The default is stock's MC_ROLLRATE_P. Expect to retune.
+
+            Values below 0.01 are clamped to 0.01: the inner loop is factored as a rate law, so
+            zero damping would disable roll and pitch entirely rather than leaving them undamped.
+        type: float
+        default: 0.15
+        min: 0.01
+        max: 2.0
+        decimal: 3
+        increment: 0.005
+
+      MC_PD_YAWR_D:
+        description:
+          short: Cascaded PD yaw rate damping gain
+          long: |
+            Normalized yaw torque per rad/s of yaw rate. This is the ONLY yaw term in the
+            controller - there is no yaw proportional term, so heading is never held and RC yaw
+            stick has no effect.
+
+            The default of 0 disables yaw actuation entirely, which is what lets the vehicle spin
+            freely after a rotor failure instead of saturating yaw torque fighting it. Raise it to
+            damp the spin rate at the cost of some roll/pitch authority.
+        type: float
+        default: 0.0
+        min: 0.0
+        max: 2.0
+        decimal: 3
+        increment: 0.005
+
+      MC_EIG_XY_P:
+        description:
+          short: Eigen controller horizontal position gain
+          long: |
+            Desired horizontal acceleration per metre of horizontal position error.
+
+            The default is the Isaac Sim prototype's swept kp_pos, which is already in acceleration
+            units and therefore transfers directly.
+        type: float
+        default: 0.5
+        min: 0.0
+        max: 5.0
+        decimal: 2
+        increment: 0.01
+
+      MC_EIG_XY_D:
+        description:
+          short: Eigen controller horizontal velocity gain
+          long: |
+            Desired horizontal acceleration per m/s of horizontal velocity error. This is the
+            damping term: it acts on the filtered estimator velocity, not on a numerical derivative
+            of the position error as the prototype did.
+        type: float
+        default: 1.0
+        min: 0.0
+        max: 10.0
+        decimal: 2
+        increment: 0.01
+
+      MC_EIG_Z_P:
+        description:
+          short: Eigen controller vertical position gain
+          long: |
+            Desired vertical acceleration per metre of altitude error.
+
+            The prototype's kp_z was 15 N per metre; divided by its 1.5 kg vehicle that is 10
+            m/s^2 per metre, which is what this default is. Note that MC_PD_Z_P next door
+            deliberately runs at 4.0 because the prototype's stiffness saturates the collective on
+            any sizeable altitude step - expect to walk this down in SITL.
+        type: float
+        default: 10.0
+        min: 0.0
+        max: 30.0
+        decimal: 2
+        increment: 0.1
+
+      MC_EIG_Z_D:
+        description:
+          short: Eigen controller vertical velocity gain
+          long: |
+            Desired vertical acceleration per m/s of climb rate error.
+
+            The prototype's kd_z of 8 N per m/s divided by its 1.5 kg vehicle.
+        type: float
+        default: 5.3
+        min: 0.0
+        max: 20.0
+        decimal: 2
+        increment: 0.1
+
+      MC_EIG_ATT_P:
+        description:
+          short: Eigen controller attitude gain
+          long: |
+            Desired body rate per radian of roll/pitch angle error. Roll and pitch share one gain.
+            This feeds the desired rates the eigen-dynamics inner loop tracks; it is not a torque
+            gain.
+        type: float
+        default: 7.0
+        min: 0.0
+        max: 30.0
+        unit: 1/s
+        decimal: 2
+        increment: 0.1
+
+      MC_EIG_ATT_D:
+        description:
+          short: Eigen controller attitude error derivative gain
+          long: |
+            Desired body rate per rad/s of roll/pitch angle ERROR RATE, computed as a finite
+            difference of the angle error across attitude samples. This is a second damping path
+            stacked on MC_EIG_WN, and it is the term most exposed to estimator noise - lower it
+            first if the inner loop buzzes.
+        type: float
+        default: 1.0
+        min: 0.0
+        max: 10.0
+        decimal: 2
+        increment: 0.05
+
+      MC_EIG_WN:
+        description:
+          short: Eigen controller rate bandwidth (eigenvalue real part)
+          long: |
+            Own-axis body rate error gain: the -wn in the complex-conjugate eigenvalue pair
+            -wn +/- j*MC_EIG_B that this law places on the roll/pitch subsystem. Larger is a
+            stiffer, faster rate loop.
+        type: float
+        default: 18.0
+        min: 0.0
+        max: 60.0
+        unit: rad/s
+        decimal: 2
+        increment: 0.5
+
+      MC_EIG_B:
+        description:
+          short: Eigen controller rate cross-coupling (eigenvalue imaginary part)
+          long: |
+            Cross-axis body rate error gain: roll rate error produces pitch torque and vice versa,
+            with opposite signs. This is what makes the law an "eigen" controller rather than two
+            independent axes - roll and pitch are stabilized as one rotating mode, which is the
+            coning mode a spinning or asymmetric vehicle actually exhibits.
+
+            Set to 0 to decouple the axes and recover a conventional rate law.
+
+            SIGN. With perfect gyroscopic cancellation the rate error obeys
+              Om_err(t) = Om_err(0) * exp(-wn*t) * exp(+i*b*t)
+            so b is the imaginary part of a complex FIRST-ORDER eigenvalue: it sets the direction
+            the error spirals in, not how fast it decays. Decay is wn, whatever b is. b therefore
+            cannot by itself stabilise anything - and it does cost margin, because the loop delay
+            acts at |wn - i*b| = sqrt(wn^2 + b^2), which b only ever increases.
+
+            NEGATIVE values are now permitted, and are what the analysis points at. A positive b
+            rotates the rate error PROGRADE, the same direction as both the residual gyroscopic
+            coupling ((Izz-It)/It * r, prograde) and the plant's own rotation; a negative b rotates
+            retrograde and can oppose them. Candidate values, none of which is settled:
+              -c*r          (c = (Izz-It)/It = 0.896) if the explicit cancellation were absent
+              +wn*tau*c*r   if the cancellation is correct but computed from a delayed omega
+              -6 to -2      the optimum of the full delayed cascade at r = 6-10
+            These disagree with each other; sweep, do not trust any of them.
+        type: float
+        default: 10.2
+        min: -60.0
+        max: 60.0
+        unit: rad/s
+        decimal: 2
+        increment: 0.5
+
+      MC_EIG_ALPHA:
+        description:
+          short: Eigen controller assumed roll/pitch rate damping
+          long: |
+            The aerodynamic rate damping the vehicle is assumed to have, which the feedback
+            linearization cancels. It therefore enters the torque as +alpha*rate: it ADDS energy,
+            on the theory that the airframe is removing the same amount.
+
+            Overestimating it is destabilizing. Keep it well below MC_EIG_WN.
+        type: float
+        default: 0.5
+        min: -10.0
+        max: 10.0
+        unit: 1/s
+        decimal: 3
+        increment: 0.05
+
+      MC_EIG_BETA:
+        description:
+          short: Eigen controller yaw rate bandwidth
+          long: |
+            Assumed yaw aerodynamic drag, and simultaneously the gain on the commanded yaw rate.
+            In this law the two are the same number: cancelling the assumed drag and imposing the
+            same eigenvalue leaves the yaw feedback term exactly zero, so what survives is a pure
+            feedforward Izz*beta*yaw_rate_setpoint.
+
+            The practical consequence is that heading is never held. At Trajectory level the yaw
+            rate setpoint is always zero, so yaw torque there is nothing but the gyroscopic
+            compensation term, which vanishes for a symmetric airframe. That is deliberate and
+            matches MC_CTRL_ALG=1: a multirotor that has lost a rotor cannot hold heading, and
+            surrendering yaw is what leaves enough authority to hold position.
+
+            Set to 0 to remove yaw actuation entirely, including in Acro and Stabilized.
+        type: float
+        default: 0.6
+        min: 0.0
+        max: 10.0
+        unit: 1/s
+        decimal: 3
+        increment: 0.05
+
+      MC_EIG_IXX:
+        description:
+          short: Eigen controller roll inertia
+          long: |
+            Vehicle moment of inertia about the body x axis, including the rotors' parallel-axis
+            contribution - not just the centre body. Scales roll torque directly and enters the
+            gyroscopic coupling of the other two axes.
+
+            The default is the Isaac Sim prototype's quadrotor. Measure or estimate this for your
+            airframe; a bifilar pendulum test is the usual method.
+        type: float
+        default: 0.01
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_EIG_IYY:
+        description:
+          short: Eigen controller pitch inertia
+          long: |
+            Vehicle moment of inertia about the body y axis. See MC_EIG_IXX.
+        type: float
+        default: 0.01
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_EIG_IZZ:
+        description:
+          short: Eigen controller yaw inertia
+          long: |
+            Vehicle moment of inertia about the body z axis.
+
+            This does more than scale yaw torque, which is why it matters even though heading is
+            not controlled: it appears in the gyroscopic term omega x (I*omega) of the ROLL and
+            PITCH axes, as (Izz - Iyy)*q*r and (Ixx - Izz)*p*r. Those are the coupling a vehicle
+            feels while yawing, and for a planar quadrotor with Izz close to 2*Ixx they do not
+            vanish at all.
+
+            The Isaac Sim prototype hardcoded this coupling instead, at a value that is
+            sign-inverted for an ordinary quadrotor; this implementation derives it from the three
+            parameters, so set them honestly.
+        type: float
+        default: 0.02
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_EIG_TRQ_MAX:
+        description:
+          short: Eigen controller full-scale torque
+          long: |
+            The body torque produced at a normalized torque setpoint of 1.0, used to convert this
+            controller's physical N m into the dimensionless value control_allocator expects.
+
+            Estimate it as roughly 2 * (maximum thrust of one rotor) * (arm length) for a
+            quadrotor. Getting it wrong is not dangerous in itself - it rescales the whole inner
+            loop uniformly, so the vehicle behaves as though MC_EIG_WN, MC_EIG_B and the inertias
+            were all scaled together - but the shipped gains only mean what they say once it is
+            right.
+        type: float
+        default: 1.0
+        min: 0.001
+        max: 100.0
+        unit: Nm
+        decimal: 3
+        increment: 0.05
+
+      MC_LEAD_EN:
+        description:
+          short: Actuator lead compensation
+          long: |
+            Multiplies the commanded body torque by (1 + MC_LEAD_TC * s), which cancels the rotor's
+            first-order pole and leaves the actuator looking like its bare transport delay. After
+            Lee et al., IEEE/ASME T-MECH 30(6) 5295-5306, 2025.
+
+            0 OFF  bit-identical to the controller before this existed. Default.
+            1 ON   the feed-forward half of the source paper's loop shaping.
+
+            WHY IT IS NOT THE SEAT. The seat rotates the wrench to cancel the phase a lag produces
+            under spin. It cannot recover the POLE's amplitude droop, 1/sqrt(1+(rT)^2). A lead
+            cancels the pole outright - phase and droop - and the two compose cleanly: the lead
+            handles the pole, which is invertible, and the seat handles the transport delay, which
+            is not. On this airframe at 20 rad/s the plant carries 43.8 deg of phase, 17.2 of it
+            delay and 26.6 of it pole, with 10.6 % droop on top.
+
+            SECOND ORDER BENEFIT. The seat is measured to cancel 1.14-1.32 of the true phase when
+            the plant is a pure delay but only 0.39-0.63 when a pole is present. Removing the pole
+            therefore also moves the seat into the regime where it works.
+
+            NOT the full source scheme. That also closes a PID loop on the torque error, which
+            needs the DELIVERED torque fed back - unavailable here without rotor RPM telemetry.
+            Only the feed-forward half is implemented, which is the half that carries the result:
+            the source's Fig. 4(a) reaches 1.5 Hz without the derivative term and 5.5 Hz with it.
+        type: enum
+        values:
+          0: Off
+          1: On
+        default: 0
+
+      MC_LEAD_TC:
+        description:
+          short: Actuator pole being inverted
+          long: |
+            The rotor/ESC first-order time constant T in Ga(s) = e^{-sL}/(1+sT). The lead is exactly
+            (1 + T s), so this parameter IS the inverse being applied and nothing else tunes it.
+
+            MEASURE IT, do not guess. Cross-spectrum phase of vehicle_torque_setpoint against
+            vehicle_angular_velocity.xyz_derivative at the spin frequency, fitted as delay plus
+            pole - see notes/AIRFRAME_ID_METHOD.md. On this airframe ev_delay.ulg gives T = 25 ms
+            median with a 12.5-40 ms spread across windows, and that spread is the dominant
+            uncertainty in the whole scheme.
+
+            SET IT TO THE BOTTOM OF YOUR MEASURED SPREAD, NOT THE MEDIAN. This is measured, not
+            reasoned. Level-3 hover, true pole 30 ms, believed pole swept with DMAX scaled by the
+            rule below so the feed-forward authority is held constant:
+
+              believed 12.5 ms  (-58%)   FLEW, indistinguishable from matched on every metric
+              believed 20 ms    (-33%)   FLEW
+              believed 30 ms    (matched) FLEW, n = 5
+              believed 40 ms    (+33%)   MARGINAL - 2 crashes in 6, at 40 s and 44 s
+              believed 50 ms    (+67%)   CRASH 2/2 at 18-21 s, 85% allocator saturation
+
+            Under-inversion is free; over-inversion is not, and the asymmetry is NOT symmetric in
+            phase error: 20 and 40 ms are near-mirror errors (+12.5 deg against -12.1 deg) and 20
+            flies repeatably while 40 is a 1-in-3 coin flip. The penalty for being far too low is nil;
+            the penalty for being too high is a marginal aircraft at +33% and a lost one at +67%.
+
+            AND THERE IS NO WARNING. The four surviving 40 ms runs hold 0.16-0.18 deg tilt for the
+            whole flight, indistinguishable from a matched TC; the two that died were equally flat
+            until one 5 s bin took them from 0.5 deg to 31 deg. Nothing separates the good runs from
+            the bad ones in advance. A setting that flies 4 times in 6 with no observable precursor
+            will pass a test flight and then kill the aircraft - which is worse than one that fails
+            outright. Do not tune this by flying it and seeing.
+
+            0 disables the lead regardless of MC_LEAD_EN.
+        type: float
+        default: 0.02
+        min: 0.0
+        max: 0.1
+        unit: s
+        decimal: 4
+        increment: 0.001
+
+      MC_LEAD_WN:
+        description:
+          short: Lead differentiator bandwidth
+          long: |
+            Sets both ESO gains: beta1 = 2*WN (critically damped) and beta2 = WN^2*sqrt(delta).
+
+            DO NOT USE THE SOURCE PAPER'S TABLE I VALUES. Linearising its (19) inside the dead zone
+            gives a differentiator rolled off at wn = sqrt(beta2/sqrt(delta)) with damping
+            beta1/(2*wn); its listed beta1 = 1, beta2 = 500 puts damping at 0.004, an 89x resonant
+            peak. Driven against a known first-order plant reading 0.894/-24.5 deg uncompensated,
+            those gains give 1.410/-74.7 deg - worse than no compensation at all. Hence this
+            parameterisation.
+
+            WHAT IT BUYS, measured on that plant (T = 25 ms, 20 rad/s spin, ideal 1.000/0 deg):
+
+              WN = 100 rad/s   0.981 / -25.8 deg    barely helps
+              WN = 250         1.136 / -16.1 deg    recovers about a third of the pole phase
+              WN = 400         1.106 /  -5.7 deg    recovers about three quarters
+
+            WHAT IT COSTS. At 2 kHz with 1 % noise on the torque, the commanded sd rises 10 % at
+            WN = 100 and 27 % at WN = 250. There is no setting that both inverts cleanly and stays
+            quiet, so SWEEP THIS IN SIMULATION before flying it. The default is deliberately
+            conservative and is not a tuned value.
+        type: float
+        default: 150.0
+        min: 0.0
+        max: 1000.0
+        unit: rad/s
+        decimal: 1
+        increment: 10.0
+
+      MC_LEAD_DLTA:
+        description:
+          short: Lead differentiator dead zone
+          long: |
+            Half-width of fal()'s linear interior. Inside it the observer is linear, outside it the
+            gain is sub-linear (sqrt), which is what lets a large transient converge without a
+            correspondingly large small-signal gain.
+
+            0 means "use the timestep", which is what the source prescribes - but that ties the
+            nonlinearity to the loop rate and makes the effective bandwidth rate-dependent, which
+            is why the same WN measures differently at 250 Hz and 2 kHz. Setting it explicitly, to
+            roughly the torque noise floor, makes the tuning portable between rungs of the
+            simulation ladder. That portability is the whole point of the ladder.
+        type: float
+        default: 0.0
+        min: 0.0
+        max: 1.0
+        unit: Nm
+        decimal: 5
+        increment: 0.0001
+
+      MC_LEAD_DMAX:
+        description:
+          short: Lead derivative clamp
+          long: |
+            Hard limit on the estimated d(tau)/dt, in N m per second, before it is multiplied by
+            MC_LEAD_TC. (No @unit: PX4's whitelist has Nm but no Nm/s.)
+
+            THIS PARAMETER CARRIES THE ENTIRE RESULT. It was first sized as TRQ_MAX/TC = 200, on
+            the reasoning that a derivative larger than "full torque within one TC" must be noise.
+            That rule is wrong, and measurably so: at 200 the level-3 rescue fails and at 25 it
+            flies, with every other setting held. Four values of MC_LEAD_TC (8, 15, 20, 30 ms) all
+            fly at DMAX = 25 and none fly at 200, so the mechanism is the clamp, not the amount of
+            inversion.
+
+            WHY. TRQ_MAX/TC bounds the lead's own contribution at TC*DMAX = TRQ_MAX - it permits
+            the feed-forward term ALONE to command the full normalised torque, on top of whatever
+            the controller asked for. And MC_EIG_TRQ_MAX is only a normaliser: the allocator
+            saturates at about 0.50 of it. So the old default licensed a transient roughly 2x the
+            torque the airframe can deliver, from a differentiator, in one tick.
+
+            SIZE IT INSTEAD as a fraction of the torque that can actually be DELIVERED:
+
+                DMAX ~= f * (0.50 * MC_EIG_TRQ_MAX) / MC_LEAD_TC,   f ~ 0.4
+
+            On this airframe (TRQ_MAX 3.843, TC 0.030) that is 0.4*1.92/0.030 = 26, which is where
+            the flying value sits. The lead is a correction; it should not be able to out-command
+            the controller it corrects.
+
+            The clamp is nonlinear, so this is not visible in the Bode plot of (1 + T s) - the
+            failure is unclamped observer spikes, not the linear lead. 0 disables the clamp, which
+            is not recommended on a vehicle.
+        type: float
+        default: 25.0
+        min: 0.0
+        max: 10000.0
+        decimal: 1
+        increment: 5.0
+
+      MC_POLE_EN:
+        description:
+          short: Adaptive pole angle enable
+          long: |
+            Adapts theta_b, an OFFSET added to the eigen law's designed pole angle
+            atan2(MC_EIG_B, MC_EIG_WN). Independent of the seat (MC_SEAT_*): the seat rotates the
+            commanded wrench and changes no design parameter, this changes the design and rotates
+            nothing. They can run together or separately.
+
+            At 0 the controller is bit-identical to an unmodified one - theta_b is an offset, so
+            disabling it is exactly "offset zero", not a different code path.
+
+            KNOWN RESULT, level-1 harness: the observable this drives on (the angle from the
+            acceleration M_dyn asks for to the one achieved) has NO interior fixed point. |alpha_b|
+            stayed >= 1.12 rad however slowly theta_b was moved, so theta_b runs monotonically to
+            MC_POLE_MAX and slowing it only reduces the damage. Enable this expecting to measure
+            that, not to benefit from it.
+
+            0 disabled. 1 = brief v3 section 4's gradient law, kept ONLY so the broken observable
+            stays measurable against the replacement - it ramps theta_b to MC_POLE_MAX and crashed
+            the vehicle in 3-9 s at level 2. 2 = extremum seeking on the lateral tracking cost, with
+            an exogenous reference and a DITHER-MEASURED gradient sign.
+        type: enum
+        values:
+          0: Disabled
+          1: Gradient (brief v3 s4) - known ill-formed, comparison only
+          2: Extremum seeking on lateral tracking
+        default: 0
+        min: 0
+        max: 2
+
+      MC_POLE_K:
+        description:
+          short: Adaptive pole angle gain
+          long: |
+            Rate at which the pole angle offset chases the measured misalignment, in rad/s of angle
+            per rad of misalignment. The ANGLE law (atan2) is used, not the seat's CROSS law, so
+            this gain is dimensionless in the same sense MC_SEAT_K is at MC_SEAT_LAW=0 - it is
+            directly the adaptation bandwidth and does not absorb the signal magnitudes.
+
+            Must sit far below the spin rate r, and below the seat's bandwidth when both run: the
+            level-1 brief calls for k_s/k_b >= 10 so the two adaptations do not interact. The
+            level-1 default is 0.2.
+        type: float
+        default: 0.2
+        min: 0.0
+        max: 5.0
+        decimal: 3
+        increment: 0.01
+
+      MC_POLE_MAX:
+        description:
+          short: Adaptive pole angle limit
+          long: |
+            Largest offset |theta_b| the adaptation may reach [rad]. Clipped internally to 1.5 rad
+            regardless: holding a pole angle theta costs a pole magnitude growing as 1/cos(theta),
+            so approaching pi/2 is a realizability limit, not a safety margin.
+        type: float
+        default: 1.4
+        min: 0.0
+        max: 1.5
+        unit: rad
+        decimal: 2
+        increment: 0.05
+
+      MC_POLE_RMIN:
+        description:
+          short: Adaptive pole angle minimum spin rate
+          long: |
+            Below this |yaw rate| the adaptation is frozen [rad/s]. The misalignment this drives on
+            is only defined against a spin frequency; with no spin, whatever the angle reads is
+            noise and integrating it is a random walk.
+        type: float
+        default: 5.0
+        min: 0.0
+        max: 50.0
+        unit: rad/s
+        decimal: 1
+        increment: 0.5
+
+      MC_POLE_DITH:
+        description:
+          short: Adaptive pole angle dither amplitude
+          long: |
+            MC_POLE_EN=2 only. Amplitude of the probing oscillation added to theta_b [rad]. This is
+            what makes the gradient measurable: without it there is nothing to correlate the cost
+            against and the sign of d(cost)/d(theta_b) is unknown.
+
+            Has to be large enough to move a SHALLOW cost. The archived static-b sweep spans only
+            0.7-3 percent of cost across the whole b range, so too small a dither buys a gradient
+            estimate indistinguishable from noise; too large and the probing itself degrades flight.
+        type: float
+        default: 0.12
+        min: 0.0
+        max: 0.5
+        unit: rad
+        decimal: 3
+        increment: 0.01
+
+      MC_POLE_FDIT:
+        description:
+          short: Adaptive pole angle dither frequency
+          long: |
+            MC_POLE_EN=2 only. Frequency of the probing oscillation [Hz]. Needs a three-way timescale
+            separation to work: well BELOW the spin rate r (so the probe does not interact with the
+            mode being compensated), and well ABOVE the MC_POLE_KES descent rate (so the cost has
+            settled before the estimate moves). At r = 29.5 rad/s (4.7 Hz) roughly 0.3-0.5 Hz.
+        type: float
+        default: 0.4
+        min: 0.05
+        max: 3.0
+        unit: Hz
+        decimal: 2
+        increment: 0.05
+
+      MC_POLE_KES:
+        description:
+          short: Adaptive pole angle descent gain
+          long: |
+            MC_POLE_EN=2 only. Rate at which the estimate descends the measured gradient. Must be
+            the slowest thing in the loop - below the dither frequency, which is itself well below
+            the spin rate. Deliberately slow: a shallow cost bowl means the gradient estimate is
+            noisy, and the cure for that is averaging, not gain.
+        type: float
+        default: 2.0
+        min: 0.0
+        max: 20.0
+        decimal: 2
+        increment: 0.1
+
+      MC_POLE_AMIN:
+        description:
+          short: Adaptive pole angle minimum commanded acceleration
+          long: |
+            MC_POLE_EN=2 only. Below this commanded (or achieved) horizontal acceleration the update
+            is frozen [m/s^2]. The cost is the ANGLE between two horizontal acceleration vectors, and
+            the angle between two near-zero vectors is noise - so in a pure position hold, where
+            there is no lateral demand at all, this law correctly does nothing. It needs the vehicle
+            to actually be translating to have anything to measure.
+        type: float
+        default: 0.3
+        min: 0.0
+        max: 5.0
+        unit: m/s^2
+        decimal: 2
+        increment: 0.05
+
+      MC_SEAT_MODE:
+        description:
+          short: Seat mode
+          long: |
+            Rotates the commanded roll/pitch torque to cancel the rotation actuator lag applies to
+            it while the vehicle spins. 0 bypasses the feature entirely.
+
+            Mode 1 computes the angle from MC_SEAT_TAU_A and MC_SEAT_T, which have to be right for
+            it to help. It is a NON-ADAPTIVE REFERENCE POINT, not a fallback: at level 1 it was
+            worse than no seat at all (crashed at 6.0 s against the baseline's 13.7 s), because the
+            open-loop model angle is not what the closed loop actually wants.
+
+            Mode 2 measures the misalignment in flight and needs no lag estimate. It is the mode
+            that works.
+
+            Roll and pitch only. Yaw torque is never rotated.
+        type: enum
+        values:
+          0: Disabled (bypass)
+          1: Fixed model rotation
+          2: Adaptive rotation
+        default: 0
+
+      MC_SEAT_LAW:
+        description:
+          short: Seat update law
+          long: |
+            How the adaptation is driven. Both share the same fixed point, so this changes
+            robustness rather than where the angle ends up.
+
+            0 drives on the signed angle from atan2, which normalises the signal magnitudes away -
+            so every tick takes a full-size step regardless of how little signal produced it.
+
+            1 drives on the raw cross product, which is that angle weighted by the signal
+            magnitudes: a starved channel then suppresses its own update with no threshold to tune,
+            and there is no atan2 near zero to guard. At level 1 this cut the angle's wander 3x in
+            hover. It is the default.
+
+            NOTE MC_SEAT_K IS DIMENSIONAL FOR LAW 1: it absorbs the units of the two accelerations,
+            so the effective bandwidth scales with signal amplitude and the gain does not carry
+            across operating points the way the angle law's does.
+        type: enum
+        values:
+          0: Angle (atan2)
+          1: Cross product
+        default: 1
+
+      MC_SEAT_K:
+        description:
+          short: Seat adaptation gain
+          long: |
+            Rate at which the rotation angle chases the measured misalignment. Mode 2 only.
+
+            For MC_SEAT_LAW=0 this is rad/s of angle per rad of misalignment and the misalignment
+            decays as exp(-K t), so it is directly the adaptation bandwidth. For MC_SEAT_LAW=1 (the
+            default law) it additionally absorbs |xd||xa|, the product of the two angular
+            acceleration magnitudes, and is therefore NOT the same number as MC_SEAT_LAW=0's - using
+            the ANGLE-law's k=2.0 under CROSS drove theta_s across its whole range in a single 4 ms
+            tick (measured 2026-09-11: |xd||xa| averages ~140 under real actuator lag, so k=2.0
+            gives a ~280 rad/s drive). Measured 2026-09-12 on this airframe with the corrected xd/xa
+            pairing: |xd||xa| averages ~10-30 in level flight, so k=0.02-0.05 gives a 0.5-1.5 rad/s
+            adaptation bandwidth - the default below sits at the low end of that, and should be
+            rechecked if the airframe's inertia, authority, or torque scale differ.
+
+            It has to sit in a window either way: fast enough that the steady tracking lag stays
+            inside the angle tolerance, and far slower than the spin rate r so the adaptation never
+            interacts with the mode it is compensating.
+        type: float
+        default: 0.02
+        min: 0.0
+        max: 20.0
+        decimal: 3
+        increment: 0.01
+
+      MC_SEAT_THMAX:
+        description:
+          short: Seat angle limit
+          long: |
+            Maximum magnitude of the rotation. Hard-ceilinged at 1.5 rad in code whatever is set.
+
+            The limit is a realizability one, not a safety margin: holding an angle theta costs a
+            pole magnitude growing as 1/cos(theta), so pi/2 is where the required authority
+            diverges. A converged angle sitting AT this limit means the seat has run out of range
+            and the lag is no longer being cancelled - that is a signal to look at the lag, not to
+            raise the limit. At level 1 the converged value was 0.15 rad at r = 29.5, so the
+            default leaves a wide margin.
+        type: float
+        default: 1.4
+        min: 0.0
+        max: 1.5
+        unit: rad
+        decimal: 2
+        increment: 0.05
+
+      MC_SEAT_RMIN:
+        description:
+          short: Seat spin-rate gate
+          long: |
+            Adaptation runs only while the measured yaw rate exceeds this. Below it the delay
+            applies no rotation to cancel, so the measured misalignment is noise and the angle is
+            held rather than driven.
+
+            Set it clear of the yaw rates ordinary flight reaches and well under the spin that
+            follows a rotor failure - around 13 rad/s on hardware, 30 rad/s in simulation.
+        type: float
+        default: 5.0
+        min: 0.0
+        max: 30.0
+        unit: rad/s
+        decimal: 1
+        increment: 0.5
+
+      MC_SEAT_KSIGN:
+        description:
+          short: Seat adaptation sign
+          long: |
+            Direction the angle moves for a given measured misalignment.
+
+            +1 is the sign the derivation gives, and it does NOT depend on which way the vehicle
+            spins - the spin rate already enters through the measured misalignment. It is exposed
+            because the derivation cannot settle the sign conventions of the mixer geometry and of
+            the measured angular acceleration, and getting it backwards is the one silent failure
+            of this feature: the angle runs the wrong way and DOUBLES the misalignment instead of
+            cancelling it. At level 1, -1 drove the angle to its rail and crashed the vehicle.
+
+            Confirm it from a log before trusting it: mc_controller_status.seat_theta must settle,
+            and seat_alpha must not sit at pi/2.
+        type: enum
+        values:
+          -1: Negative
+          1: Positive
+        default: 1
+
+      MC_SEAT_TAU_A:
+        description:
+          short: Seat transport delay
+          long: |
+            Pure transport delay from a published torque setpoint to the rotors acting on it -
+            mixer, output driver, ESC command latency. MODE 1 ONLY; mode 2 never reads it.
+
+            At spin rate r this contributes exactly r * MC_SEAT_TAU_A to the model angle, with no
+            droop, because a pure delay is all-pass.
+
+            Measured 2026-09-12 on this airframe at rotor_tau=0 (so isolating whatever delay PX4's
+            own pipeline has, independent of any modelled rotor lag): with the seat inert, the
+            corrected xd/xa pairing reads a systematic misalignment of -0.84 rad at r=27.8, and
+            |xa|/|xd| = 0.933 - close enough to the all-pass value of 1.0 (a first-order lag
+            producing this much phase would droop to 0.66) that this is delay, not lag. That is
+            ~30 ms of transport delay baked into PX4's own loop/mixer/allocator/uORB pipeline that
+            the previous default of 2 ms did not represent at all.
+        type: float
+        default: 0.03
+        min: 0.0
+        max: 0.05
+        unit: s
+        decimal: 4
+        increment: 0.0005
+
+      MC_SEAT_T:
+        description:
+          short: Seat actuator lag
+          long: |
+            First-order lag of the rotor and ESC responding to a commanded thrust change. MODE 1
+            ONLY; mode 2 never reads it.
+
+            Unlike a transport delay this one droops as well as rotates: it contributes
+            atan(r * MC_SEAT_T) of angle and 1/sqrt(1+(r*T)^2) of magnitude, and the seat cannot
+            recover the magnitude - 7% is lost at r = 20 with T = 20 ms, 30% at r = 30.
+
+            The default matches ROTOR_TAU_PLACEHOLDER in the Pegasus simulator's
+            quadratic_thrust_curve.py, which is itself a PLACEHOLDER rather than a measurement for
+            this airframe.
+        type: float
+        default: 0.02
+        min: 0.0
+        max: 0.2
+        unit: s
+        decimal: 4
+        increment: 0.001
+
+      MC_SEAT_SATGATE:
+        description:
+          short: Seat allocator-saturation gate
+          long: |
+            Whether allocator saturation freezes the theta_s adaptation. 1 = gated (default and the
+            behaviour every archived run was flown with), 0 = adapt straight through saturation.
+
+            THE ARGUMENT FOR GATING. Once the mixer clips, the achieved direction stops following the
+            commanded one for reasons that have nothing to do with delay geometry, so integrating it
+            winds up on error the seat itself caused.
+
+            THE ARGUMENT AGAINST, measured 2026-09-19. All 51 archived level-2/3 ulogs saturate
+            roll/pitch, from 10 % of ticks to 95 %, and on the adapting arms the gate explains the
+            freezing and nothing else does - P(gated | saturated) 99-100 %, P(gated | not saturated)
+            0 %. One run had the law frozen for 80 % of the flight. Worse, the skipped ticks are not a
+            random sample: |xd| on them runs 1.3x to 32x the ticks that were used, so the gate removes
+            exactly the ticks MC_SEAT_LAW = 1 (cross) weights most heavily. A magnitude clip also does
+            not ROTATE the wrench, which is the quantity alpha measures, so the theoretical case for
+            gating the ANGLE is weaker than it looks.
+
+            WHY 1 IS STILL THE DEFAULT. The flying baseline was established with it on: level-3 hover,
+            20 ms pole, r = 29.4, n = 5, theta_s = -0.4731 +/- 0.0009 over five runs. Setting 0 is an
+            experiment against that baseline, not a correction to it.
+
+            BOTH ARCHIVES STILL REPRODUCE at this default. The level-1 twin
+            (examples/utils/seat.py) never drove the flag before 2026-09-19 and now does, from its own
+            torque re-clip - but that clip is behind `torque_max`, which is None unless a run passes
+            --controller-gains torque_max=..., and no archived level-1 run does. So the flag is never
+            assigned there and the gate stays inert whatever SATGATE says. Level 1 is bit-identical;
+            level 2/3 reproduce at SATGATE = 1.
+
+            The residual risk at 0: PX4's desaturation redistributes across axes rather than scaling
+            uniformly, so some saturation-induced rotation does reach alpha.
+        type: enum
+        values:
+          0: Adapt through saturation
+          1: Freeze while saturated
+        default: 1
+
+      MC_TPL_RATE_P:
+        description:
+          short: Template controller body rate proportional gain
+          long: |
+            Only used when MC_CTRL_ALG selects the template controller.
+        type: float
+        default: 0.15
+        min: 0.0
+        max: 1.0
+        decimal: 3
+        increment: 0.005
+
+      MC_TPL_RATE_I:
+        description:
+          short: Template controller body rate integral gain
+          long: |
+            Only used when MC_CTRL_ALG selects the template controller.
+        type: float
+        default: 0.2
+        min: 0.0
+        max: 1.0
+        decimal: 3
+        increment: 0.005
+
+      MC_TPL_ATT_P:
+        description:
+          short: Template controller attitude proportional gain
+          long: |
+            Only used when MC_CTRL_ALG selects the template controller.
+        type: float
+        default: 6.5
+        min: 0.0
+        max: 12.0
+        decimal: 2
+        increment: 0.1
+
+      MC_TEIG_XY_P:
+        description:
+          short: Tilt-eigen controller horizontal position gain
+          long: |
+            Desired horizontal acceleration per metre of horizontal position error.
+
+            Same stage and same units as MC_EIG_XY_P; the default matches it.
+        type: float
+        default: 0.5
+        min: 0.0
+        max: 5.0
+        decimal: 2
+        increment: 0.01
+
+      MC_TEIG_XY_D:
+        description:
+          short: Tilt-eigen controller horizontal velocity gain
+          long: |
+            Desired horizontal acceleration per m/s of horizontal velocity error. This is the
+            damping term: it acts on the filtered estimator velocity, not on a numerical derivative
+            of the position error.
+
+            Same stage and same units as MC_EIG_XY_D; the default matches it.
+        type: float
+        default: 1.0
+        min: 0.0
+        max: 10.0
+        decimal: 2
+        increment: 0.01
+
+      MC_TEIG_Z_P:
+        description:
+          short: Tilt-eigen controller vertical position gain
+          long: |
+            Desired vertical acceleration per metre of altitude error.
+
+            Same stage and same units as MC_EIG_Z_P; the default matches it, including its
+            inheritance of the Isaac Sim prototype's stiffness. That stiffness saturates the
+            collective on any sizeable altitude step - expect to walk this down in SITL, as
+            MC_PD_Z_P next door already has.
+        type: float
+        default: 10.0
+        min: 0.0
+        max: 30.0
+        decimal: 2
+        increment: 0.1
+
+      MC_TEIG_Z_D:
+        description:
+          short: Tilt-eigen controller vertical velocity gain
+          long: |
+            Desired vertical acceleration per m/s of climb rate error.
+
+            Same stage and same units as MC_EIG_Z_D; the default matches it.
+        type: float
+        default: 5.3
+        min: 0.0
+        max: 20.0
+        decimal: 2
+        increment: 0.1
+
+      MC_TEIG_ATT_P:
+        description:
+          short: Tilt-eigen controller attitude gain
+          long: |
+            Desired body rate per radian of TILT error - the angle between the vehicle's thrust axis
+            and the demanded one, about the axis that closes it. Roll and pitch share one gain
+            because the error is a single rotation, not two angles.
+
+            This is the direct counterpart of MC_EIG_ATT_P and carries its tuned value over
+            unchanged: to first order the tilt error vector IS (roll error, pitch error), same sign
+            and same magnitude. The difference is at large angles, where this one stays exact and
+            MC_EIG_ATT_P's Euler decomposition does not.
+
+            It feeds the desired rates the eigen-dynamics inner loop tracks; it is not a torque gain.
+        type: float
+        default: 7.0
+        min: 0.0
+        max: 30.0
+        unit: 1/s
+        decimal: 2
+        increment: 0.1
+
+      MC_TEIG_WN:
+        description:
+          short: Tilt-eigen controller rate bandwidth (eigenvalue real part)
+          long: |
+            Own-axis body rate error gain: the -wn in the complex-conjugate eigenvalue pair
+            -wn +/- j*MC_TEIG_B that this law places on the roll/pitch subsystem. Larger is a
+            stiffer, faster rate loop.
+
+            This carries MORE of the damping load than MC_EIG_WN does, because there is no
+            MC_TEIG_ATT_D stacked on top of it. If a tune ported from MC_CTRL_ALG=3 feels soft in
+            attitude, raise this rather than looking for the missing derivative gain.
+        type: float
+        default: 18.0
+        min: 0.0
+        max: 60.0
+        unit: rad/s
+        decimal: 2
+        increment: 0.5
+
+      MC_TEIG_B:
+        description:
+          short: Tilt-eigen controller rate cross-coupling (eigenvalue imaginary part)
+          long: |
+            Cross-axis body rate error gain: roll rate error produces pitch torque and vice versa,
+            with opposite signs. This is what makes the law an "eigen" controller rather than two
+            independent axes - roll and pitch are stabilized as one rotating mode, which is the
+            coning mode a spinning or asymmetric vehicle actually exhibits.
+
+            Identical in meaning and value to MC_EIG_B. The cross-coupling is a rotation in the body
+            x-y plane and the tilt error is a vector in that same plane, which is why changing the
+            attitude chart left this stage untouched.
+
+            Set to 0 to decouple the axes and recover a conventional rate law.
+        type: float
+        default: 10.2
+        min: 0.0
+        max: 60.0
+        unit: rad/s
+        decimal: 2
+        increment: 0.5
+
+      MC_TEIG_ALPHA:
+        description:
+          short: Tilt-eigen controller assumed roll/pitch rate damping
+          long: |
+            The aerodynamic rate damping the vehicle is assumed to have, which the feedback
+            linearization cancels. It therefore enters the torque as +alpha*rate: it ADDS energy,
+            on the theory that the airframe is removing the same amount.
+
+            Overestimating it is destabilizing. Keep it well below MC_TEIG_WN.
+        type: float
+        default: 0.5
+        min: 0.0
+        max: 5.0
+        unit: 1/s
+        decimal: 3
+        increment: 0.05
+
+      MC_TEIG_BETA:
+        description:
+          short: Tilt-eigen controller yaw rate bandwidth
+          long: |
+            Assumed yaw aerodynamic drag, and simultaneously the gain on the commanded yaw rate.
+            In this law the two are the same number: cancelling the assumed drag and imposing the
+            same eigenvalue leaves the yaw feedback term exactly zero, so what survives is a pure
+            feedforward Izz*beta*yaw_rate_setpoint.
+
+            Heading is never held. Here that is structural rather than arranged: the reduced-attitude
+            error is an axis in the body x-y plane and has no yaw component to begin with, so unlike
+            MC_CTRL_ALG=3 there is no heading injected into the setpoint and differenced back out.
+            At Trajectory level the yaw rate setpoint is always zero, so yaw torque there is nothing
+            but the gyroscopic compensation term, which vanishes for a symmetric airframe.
+
+            Set to 0 to remove yaw actuation entirely, including in Acro and Stabilized.
+        type: float
+        default: 0.6
+        min: 0.0
+        max: 10.0
+        unit: 1/s
+        decimal: 3
+        increment: 0.05
+
+      MC_TEIG_IXX:
+        description:
+          short: Tilt-eigen controller roll inertia
+          long: |
+            Vehicle moment of inertia about the body x axis, including the rotors' parallel-axis
+            contribution - not just the centre body. Scales roll torque directly and enters the
+            gyroscopic coupling of the other two axes.
+
+            The default is the Isaac Sim prototype's quadrotor, matching MC_EIG_IXX. Measure or
+            estimate this for your airframe; a bifilar pendulum test is the usual method.
+        type: float
+        default: 0.01
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_TEIG_IYY:
+        description:
+          short: Tilt-eigen controller pitch inertia
+          long: |
+            Vehicle moment of inertia about the body y axis. See MC_TEIG_IXX.
+        type: float
+        default: 0.01
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_TEIG_IZZ:
+        description:
+          short: Tilt-eigen controller yaw inertia
+          long: |
+            Vehicle moment of inertia about the body z axis.
+
+            This does more than scale yaw torque, which is why it matters even though heading is
+            not controlled: it appears in the gyroscopic term omega x (I*omega) of the ROLL and
+            PITCH axes, as (Izz - Iyy)*q*r and (Ixx - Izz)*p*r. Those are the coupling a vehicle
+            feels while yawing, and for a planar quadrotor with Izz close to 2*Ixx they do not
+            vanish at all.
+
+            The Isaac Sim prototype hardcoded this coupling instead, at a value that is
+            sign-inverted for an ordinary quadrotor; this implementation derives it from the three
+            parameters, so set them honestly.
+        type: float
+        default: 0.02
+        min: 0.0001
+        max: 5.0
+        unit: kg m^2
+        decimal: 5
+        increment: 0.001
+
+      MC_TEIG_TRQ_MAX:
+        description:
+          short: Tilt-eigen controller full-scale torque
+          long: |
+            The body torque produced at a normalized torque setpoint of 1.0, used to convert this
+            controller's physical N m into the dimensionless value control_allocator expects.
+
+            Estimate it as roughly 2 * (maximum thrust of one rotor) * (arm length) for a
+            quadrotor. Getting it wrong is not dangerous in itself - it rescales the whole inner
+            loop uniformly, so the vehicle behaves as though MC_TEIG_WN, MC_TEIG_B and the inertias
+            were all scaled together - but the shipped gains only mean what they say once it is
+            right.
+        type: float
+        default: 1.0
+        min: 0.001
+        max: 100.0
+        unit: Nm
+        decimal: 3
+        increment: 0.05
+
+      MC_OL_XY_I:
+        description:
+          short: Trajectory stage horizontal position integral gain
+          long: |
+            Rate of change of desired horizontal acceleration per metre of horizontal position
+            error. Removes the standing offset a PD law settles into against a constant
+            disturbance - wind, a laterally offset centre of gravity, thrust asymmetry, or an
+            estimator tilt bias, all of which look identical to the controller.
+
+            Only active on axes where the flight mode actually commands a position. Altitude modes
+            command no horizontal position, so this has no effect there.
+
+            Zero by default: the horizontal offset is invisible in simulation, so a nonzero default
+            would be untested. Raise it on hardware once a hover log shows the drift.
+        type: float
+        default: 0.0
+        min: 0.0
+        max: 2.0
+        decimal: 3
+        increment: 0.005
+
+      MC_OL_Z_I:
+        description:
+          short: Trajectory stage vertical position integral gain
+          long: |
+            Rate of change of desired vertical acceleration per metre of altitude error.
+
+            Altitude is normally trimmed by the hover thrust estimator rather than by an
+            integrator: hover thrust is by definition the collective that produces 1 g, so once the
+            estimate converges the steady-state altitude error is already zero. This gain covers
+            what the estimator does not - the window before it converges, the periods where it is
+            invalid or heavily de-weighted, and sustained aggressive flight where its measurement
+            noise scaling keeps it from ever validating.
+
+            Zero by default, for the same reason as the horizontal gain.
+        type: float
+        default: 0.0
+        min: 0.0
+        max: 5.0
+        decimal: 3
+        increment: 0.005
+
+      MC_OL_I_LIM:
+        description:
+          short: Trajectory stage integral limit
+          long: |
+            Maximum acceleration any one axis of the integrator may contribute. Applied per axis,
+            both to the integration itself and to the correction absorbed when the hover thrust
+            estimate changes.
+
+            One g by default, matching the bound stock mc_pos_control puts on its own vertical
+            velocity integral: a term larger than gravity can invert the sign of the collective on
+            its own, which is never a recovery from anything.
+        type: float
+        default: 9.81
+        min: 0.0
+        max: 20.0
+        unit: m/s^2
+        decimal: 2
+        increment: 0.1

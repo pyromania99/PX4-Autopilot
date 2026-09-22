@@ -10,17 +10,17 @@ pageClass: is-wide-page
 
 ## Fields
 
-| Назва     | Тип      | Unit [Frame] | Range/Enum | Опис                            |
-| --------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
-| timestamp | `uint64` |                                                                  |            |                                 |
-| command   | `int8`   |                                                                  |            | Commanded state for the gripper |
+| Назва                               | Тип      | Unit [Frame] | Range/Enum | Опис                            |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` |                                                                  |            |                                 |
+| <a id="fld_command"></a>command     | `int8`   |                                                                  |            | Commanded state for the gripper |
 
 ## Constants
 
-| Назва                                                                | Тип    | Значення | Опис |
-| -------------------------------------------------------------------- | ------ | -------- | ---- |
-| <a href="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0        |      |
-| <a href="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1        |      |
+| Назва                                                              | Тип    | Значення | Опис |
+| ------------------------------------------------------------------ | ------ | -------- | ---- |
+| <a id="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0        |      |
+| <a id="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1        |      |
 
 ## Source Message
 

@@ -4,24 +4,24 @@ pageClass: is-wide-page
 
 # VehicleRatesSetpoint (повідомлення UORB)
 
-**TOPICS:** vehicle_ratessetpoint
+**TOPICS:** vehicle_rates_setpoint
 
 ## Fields
 
-| Назва                               | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                                   |
-| ----------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| timestamp                           | `uint64`     |                                                                  |            | time since system start (microseconds)                                              |
-| roll                                | `float32`    | rad/s                                                            |            | roll rate setpoint                                                                                     |
-| pitch                               | `float32`    | rad/s                                                            |            | pitch rate setpoint                                                                                    |
-| yaw                                 | `float32`    | rad/s                                                            |            | yaw rate setpoint                                                                                      |
-| thrust_body    | `float32[3]` |                                                                  |            | Normalized thrust command in body NED frame [-1,1] |
-| reset_integral | `bool`       |                                                                  |            | Reset roll/pitch/yaw integrals (navigation logic change)                            |
+| Назва                                                              | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                                   |
+| ------------------------------------------------------------------ | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| <a id="fld_timestamp"></a>timestamp                                | `uint64`     |                                                                  |            | time since system start (microseconds)                                              |
+| <a id="fld_roll"></a>roll                                          | `float32`    | rad/s                                                            |            | roll rate setpoint                                                                                     |
+| <a id="fld_pitch"></a>pitch                                        | `float32`    | rad/s                                                            |            | pitch rate setpoint                                                                                    |
+| <a id="fld_yaw"></a>yaw                                            | `float32`    | rad/s                                                            |            | yaw rate setpoint                                                                                      |
+| <a id="fld_thrust_body"></a>thrust_body       | `float32[3]` |                                                                  |            | Normalized thrust command in body NED frame [-1,1] |
+| <a id="fld_reset_integral"></a>reset_integral | `bool`       |                                                                  |            | Reset roll/pitch/yaw integrals (navigation logic change)                            |
 
 ## Constants
 
-| Назва                                                                | Тип      | Значення | Опис |
-| -------------------------------------------------------------------- | -------- | -------- | ---- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
+| Назва                                                              | Тип      | Значення | Опис |
+| ------------------------------------------------------------------ | -------- | -------- | ---- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
 
 ## Source Message
 

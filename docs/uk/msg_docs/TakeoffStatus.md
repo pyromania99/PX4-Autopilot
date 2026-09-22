@@ -10,22 +10,22 @@ Status of the takeoff state machine currently just available for multicopters.
 
 ## Fields
 
-| Назва                              | Тип       | Unit [Frame] | Range/Enum | Опис                                                                     |
-| ---------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
-| timestamp                          | `uint64`  |                                                                  |            | time since system start (microseconds)                |
-| takeoff_state | `uint8`   |                                                                  |            |                                                                          |
-| tilt_limit    | `float32` |                                                                  |            | limited tilt feasibility during takeoff, contains maximum tilt otherwise |
+| Назва                                                            | Тип       | Unit [Frame] | Range/Enum | Опис                                                                     |
+| ---------------------------------------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
+| <a id="fld_timestamp"></a>timestamp                              | `uint64`  |                                                                  |            | time since system start (microseconds)                |
+| <a id="fld_takeoff_state"></a>takeoff_state | `uint8`   |                                                                  |            |                                                                          |
+| <a id="fld_tilt_limit"></a>tilt_limit       | `float32` |                                                                  |            | limited tilt feasibility during takeoff, contains maximum tilt otherwise |
 
 ## Constants
 
-| Назва                                                                                                                                                               | Тип     | Значення | Опис |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ---- |
-| <a href="#TAKEOFF_STATE_UNINITIALIZED"></a> TAKEOFF_STATE_UNINITIALIZED                                                   | `uint8` | 0        |      |
-| <a href="#TAKEOFF_STATE_DISARMED"></a> TAKEOFF_STATE_DISARMED                                                             | `uint8` | 1        |      |
-| <a href="#TAKEOFF_STATE_SPOOLUP"></a> TAKEOFF_STATE_SPOOLUP                                                               | `uint8` | 2        |      |
-| <a href="#TAKEOFF_STATE_READY_FOR_TAKEOFF"></a> TAKEOFF_STATE_READY_FOR_TAKEOFF | `uint8` | 3        |      |
-| <a href="#TAKEOFF_STATE_RAMPUP"></a> TAKEOFF_STATE_RAMPUP                                                                 | `uint8` | 4        |      |
-| <a href="#TAKEOFF_STATE_FLIGHT"></a> TAKEOFF_STATE_FLIGHT                                                                 | `uint8` | 5        |      |
+| Назва                                                                                                                                                             | Тип     | Значення | Опис |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ---- |
+| <a id="#TAKEOFF_STATE_UNINITIALIZED"></a> TAKEOFF_STATE_UNINITIALIZED                                                   | `uint8` | 0        |      |
+| <a id="#TAKEOFF_STATE_DISARMED"></a> TAKEOFF_STATE_DISARMED                                                             | `uint8` | 1        |      |
+| <a id="#TAKEOFF_STATE_SPOOLUP"></a> TAKEOFF_STATE_SPOOLUP                                                               | `uint8` | 2        |      |
+| <a id="#TAKEOFF_STATE_READY_FOR_TAKEOFF"></a> TAKEOFF_STATE_READY_FOR_TAKEOFF | `uint8` | 3        |      |
+| <a id="#TAKEOFF_STATE_RAMPUP"></a> TAKEOFF_STATE_RAMPUP                                                                 | `uint8` | 4        |      |
+| <a id="#TAKEOFF_STATE_FLIGHT"></a> TAKEOFF_STATE_FLIGHT                                                                 | `uint8` | 5        |      |
 
 ## Source Message
 

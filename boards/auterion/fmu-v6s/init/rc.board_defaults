@@ -9,6 +9,8 @@ param set-default SYS_DM_BACKEND 1
 param set-default MAV_0_CONFIG 0
 # Disable logger writing to FRAM, only stream over MAVLINK
 param set-default SDLOG_BACKEND 2
+# Disable UAVCAN tracing
+param set-default UAVCAN_TRACE_EN 0
 
 # 200kOhm/10kOhm voltage divider on V_BAT
 param set-default BAT1_V_DIV 21
@@ -25,6 +27,10 @@ param set-default UXRCE_DDS_PTCFG 2
 param set-default UXRCE_DDS_AG_IP 170461697
 param set-default UXRCE_DDS_CFG 1000
 
+# Mount NFS export from the SOM (10.41.10.1)
+param set-default NFS_EN 1
+param set-default NFS_IP 170461697
+
 # Update default IP config if needed
 netman update_default -i eth0
 
@@ -33,9 +39,6 @@ nshterm /dev/ttyS3 &
 
 # Start the time_persistor to cyclically store the RTC in FRAM
 time_persistor start
-
-# Start the task_watchdog as we do not have the logger watchdog
-task_watchdog start
 
 # Start the ESC telemetry
 dshot telemetry -d /dev/ttyS5 -x

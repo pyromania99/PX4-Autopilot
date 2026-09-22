@@ -10,17 +10,14 @@
 ## 功能配置
 
 - [使用 PX4 的导航滤波器 (EKF2)](../advanced_config/tuning_the_ecl_ekf.md)
+- [无 GNSS 及 GNSS 信号降级的飞行](../advanced_config/gnss_degraded_or_denied_flight.md)
 - [飞行终止配置](../advanced_config/flight_termination.md)
 - [着陆探测器配置](../advanced_config/land_detector.md)
 - [解锁前/解锁/加锁 配置](../advanced_config/prearm_arm_disarm.md)
 
 ## OEM/出厂校准
 
-- [IMU 出厂校准](../advanced_config/imu_factory_calibration.md)
-- [传感器热补偿](../advanced_config/sensor_thermal_calibration.md)
-- [Compass Power Compensation](../advanced_config/compass_power_compensation.md)
-- [飞控方向高级配置](../advanced_config/advanced_flight_controller_orientation_leveling.md)
-- [静态压力构建](../advanced_config/static_pressure_buildup.md)
+- [OEM/Factory Configuration](../advanced_config/oem.md)
 
 ## 串口/以太网配置
 

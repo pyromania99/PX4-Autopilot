@@ -10,17 +10,17 @@ GPIO mask and state.
 
 ## Fields
 
-| 명칭                             | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| device_id | `uint32` |                                                                  |            | Device id                                                 |
-| state                          | `uint32` |                                                                  |            | pin state mask                                            |
+| 명칭                                                       | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_device_id"></a>device_id | `uint32` |                                                                  |            | Device id                                                 |
+| <a id="fld_state"></a>state                              | `uint32` |                                                                  |            | pin state mask                                            |
 
 ## Constants
 
-| 명칭                                                               | 형식      | Value | 설명 |
-| ---------------------------------------------------------------- | ------- | ----- | -- |
-| <a href="#MAX_INSTANCES"></a> MAX_INSTANCES | `uint8` | 8     |    |
+| 명칭                                                             | 형식      | Value | 설명 |
+| -------------------------------------------------------------- | ------- | ----- | -- |
+| <a id="#MAX_INSTANCES"></a> MAX_INSTANCES | `uint8` | 8     |    |
 
 ## Source Message
 

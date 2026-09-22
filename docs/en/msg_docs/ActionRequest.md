@@ -14,16 +14,18 @@ Request are published by `manual_control` and subscribed by the `commander` and 
 
 ## Fields
 
-| Name      | Type     | Unit [Frame] | Range/Enum        | Description                                                                                                                                                      |
-| --------- | -------- | ------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| timestamp | `uint64` | us           |                   | Time since system start                                                                                                                                          |
-| action    | `uint8`  |              | [ACTION](#ACTION) | Requested action                                                                                                                                                 |
-| source    | `uint8`  |              | [SOURCE](#SOURCE) | Request trigger type, such as a switch, button or gesture                                                                                                        |
-| mode      | `uint8`  |              |                   | Requested mode. Only applies when `action` is `ACTION_SWITCH_MODE`. Values for this field are defined by the `vehicle_status_s::NAVIGATION_STATE_*` enumeration. |
+| Name                                | Type     | Unit [Frame] | Range/Enum        | Description                                                                                                                                                      |
+| ----------------------------------- | -------- | ------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` | us           |                   | Time since system start                                                                                                                                          |
+| <a id="fld_action"></a>action       | `uint8`  |              | [ACTION](#ACTION) | Requested action                                                                                                                                                 |
+| <a id="fld_source"></a>source       | `uint8`  |              | [SOURCE](#SOURCE) | Request trigger type, such as a switch, button or gesture                                                                                                        |
+| <a id="fld_mode"></a>mode           | `uint8`  |              |                   | Requested mode. Only applies when `action` is `ACTION_SWITCH_MODE`. Values for this field are defined by the `vehicle_status_s::NAVIGATION_STATE_*` enumeration. |
 
 ## Enums
 
 ### ACTION {#ACTION}
+
+Used in field(s): [action](#fld_action)
 
 | Name                                                                                      | Type    | Value | Description                                                           |
 | ----------------------------------------------------------------------------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -39,12 +41,20 @@ Request are published by `manual_control` and subscribed by the `commander` and 
 
 ### SOURCE {#SOURCE}
 
+Used in field(s): [source](#fld_source)
+
 | Name                                                    | Type    | Value | Description                                                     |
 | ------------------------------------------------------- | ------- | ----- | --------------------------------------------------------------- |
 | <a id="#SOURCE_STICK_GESTURE"></a> SOURCE_STICK_GESTURE | `uint8` | 0     | Triggered by holding the sticks in a certain position           |
 | <a id="#SOURCE_RC_SWITCH"></a> SOURCE_RC_SWITCH         | `uint8` | 1     | Triggered by an RC switch moving into a certain position        |
 | <a id="#SOURCE_RC_BUTTON"></a> SOURCE_RC_BUTTON         | `uint8` | 2     | Triggered by a momentary button on the RC being pressed or held |
 | <a id="#SOURCE_RC_MODE_SLOT"></a> SOURCE_RC_MODE_SLOT   | `uint8` | 3     | Mode change through the RC mode selection mechanism             |
+
+## Constants
+
+| Name                                            | Type    | Value | Description |
+| ----------------------------------------------- | ------- | ----- | ----------- |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 4     |
 
 ## Source Message
 
@@ -59,26 +69,28 @@ Request are published by `manual_control` and subscribed by the `commander` and 
 # It allows mapping triggers from various external interfaces like RC channels or MAVLink to cause an action.
 # Request are published by `manual_control` and subscribed by the `commander` and `vtol_att_control` modules.
 
-uint64 timestamp  # [us] Time since system start
+uint64 timestamp # [us] Time since system start
 
-uint8 action                                     # [@enum ACTION] Requested action
-uint8 ACTION_DISARM = 0                          # Disarm vehicle
-uint8 ACTION_ARM = 1                             # Arm vehicle
-uint8 ACTION_TOGGLE_ARMING = 2                   # Toggle arming
-uint8 ACTION_UNKILL = 3                          # Revert a kill action
-uint8 ACTION_KILL = 4                            # Kill vehicle (instantly stop the motors)
-uint8 ACTION_SWITCH_MODE = 5                     # Switch mode. The target mode is set in the `mode` field.
-uint8 ACTION_VTOL_TRANSITION_TO_MULTICOPTER = 6  # Transition to hover flight
-uint8 ACTION_VTOL_TRANSITION_TO_FIXEDWING = 7    # Transition to fast forward flight
-uint8 ACTION_TERMINATION = 8                     # Irreversibly output failsafe values on all outputs, trigger parachute
+uint8 action # [@enum ACTION] Requested action
+uint8 ACTION_DISARM = 0 # Disarm vehicle
+uint8 ACTION_ARM = 1 # Arm vehicle
+uint8 ACTION_TOGGLE_ARMING = 2 # Toggle arming
+uint8 ACTION_UNKILL = 3 # Revert a kill action
+uint8 ACTION_KILL = 4 # Kill vehicle (instantly stop the motors)
+uint8 ACTION_SWITCH_MODE = 5 # Switch mode. The target mode is set in the `mode` field.
+uint8 ACTION_VTOL_TRANSITION_TO_MULTICOPTER = 6 # Transition to hover flight
+uint8 ACTION_VTOL_TRANSITION_TO_FIXEDWING = 7 # Transition to fast forward flight
+uint8 ACTION_TERMINATION = 8 # Irreversibly output failsafe values on all outputs, trigger parachute
 
-uint8 source                    # [@enum SOURCE] Request trigger type, such as a switch, button or gesture
-uint8 SOURCE_STICK_GESTURE = 0  # Triggered by holding the sticks in a certain position
-uint8 SOURCE_RC_SWITCH = 1      # Triggered by an RC switch moving into a certain position
-uint8 SOURCE_RC_BUTTON = 2      # Triggered by a momentary button on the RC being pressed or held
-uint8 SOURCE_RC_MODE_SLOT = 3   # Mode change through the RC mode selection mechanism
+uint8 source # [@enum SOURCE] Request trigger type, such as a switch, button or gesture
+uint8 SOURCE_STICK_GESTURE = 0 # Triggered by holding the sticks in a certain position
+uint8 SOURCE_RC_SWITCH = 1 # Triggered by an RC switch moving into a certain position
+uint8 SOURCE_RC_BUTTON = 2 # Triggered by a momentary button on the RC being pressed or held
+uint8 SOURCE_RC_MODE_SLOT = 3 # Mode change through the RC mode selection mechanism
 
-uint8 mode  # Requested mode. Only applies when `action` is `ACTION_SWITCH_MODE`. Values for this field are defined by the `vehicle_status_s::NAVIGATION_STATE_*` enumeration.
+uint8 mode # Requested mode. Only applies when `action` is `ACTION_SWITCH_MODE`. Values for this field are defined by the `vehicle_status_s::NAVIGATION_STATE_*` enumeration.
+
+uint8 ORB_QUEUE_LENGTH = 4
 ```
 
 :::

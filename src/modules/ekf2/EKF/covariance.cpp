@@ -139,6 +139,11 @@ void Ekf::predictCovariance(const imuSample &imu_delayed)
 				   imu_delayed.delta_ang / imu_delayed.delta_ang_dt, gyro_var,
 				   dt);
 
+	if (!_control_status.flags.heading_observable) {
+		// Zero heading correlations to prevent unintended heading corrections when heading is not observable
+		uncorrelateAndLimitHeadingCovariance();
+	}
+
 	// Construct the process noise variance diagonal for those states with a stationary process model
 	// These are kinematic states and their error growth is controlled separately by the IMU noise variances
 
@@ -202,7 +207,8 @@ void Ekf::predictCovariance(const imuSample &imu_delayed)
 #if defined(CONFIG_EKF2_WIND)
 
 	// wind vel: add process noise
-	const float height_rate = _height_rate_lpf.update(_state.vel(2), imu_delayed.delta_vel_dt);
+	const float height_rate = _height_rate_lpf.update(_state.vel(2),
+				  static_cast<uint64_t>(imu_delayed.delta_vel_dt * 1e6f));
 	const float wind_vel_nsd_scaled = _params.ekf2_wind_nsd * (1.f + _params.wind_vel_nsd_scaler * fabsf(height_rate));
 	const float wind_vel_process_noise = sq(wind_vel_nsd_scaled) * dt;
 
@@ -250,6 +256,11 @@ void Ekf::constrainStateVariances()
 	// belong to the same group (e.g. vel_x, vel_y, vel_z)
 
 	constrainStateVar(State::quat_nominal, 1e-9f, 1.f);
+
+	if (!_control_status.flags.heading_observable) {
+		uncorrelateAndLimitHeadingCovariance();
+	}
+
 	constrainStateVar(State::vel, 1e-6f, 1e6f);
 	constrainStateVar(State::pos, 1e-6f, 1e6f);
 	constrainStateVarLimitRatio(State::gyro_bias, kGyroBiasVarianceMin, 1.f);
@@ -286,10 +297,12 @@ void Ekf::constrainStateVar(const IdxDof &state, float min, float max)
 		} else if (P(i, i) > max) {
 			// Constrain the variance growth by fusing zero innovation as clipping the variance
 			// would artifically increase the correlation between states and destabilize the filter.
+			// constrain_variances=false prevents unbounded recursion via
+			// fuseDirectStateMeasurement -> constrainStateVariances -> constrainStateVar -> here.
 			const float innov = 0.f;
 			const float R = 10.f * P(i, i); // This reduces the variance by ~10% as K = P / (P + R)
 			const float innov_var = P(i, i) + R;
-			fuseDirectStateMeasurement(innov, innov_var, R, i);
+			fuseDirectStateMeasurement(innov, innov_var, R, i, /*constrain_variances=*/false);
 		}
 	}
 }
@@ -309,6 +322,13 @@ void Ekf::constrainStateVarLimitRatio(const IdxDof &state, float min, float max,
 	float limited_min = math::constrain(limited_max / max_ratio, min, max);
 
 	constrainStateVar(state, limited_min, limited_max);
+}
+
+void Ekf::uncorrelateAndLimitHeadingCovariance()
+{
+	const float heading_var = P(State::quat_nominal.idx + 2, State::quat_nominal.idx + 2);
+	const float heading_var_max = sq(_params.ekf2_head_noise);
+	P.uncorrelateCovarianceSetVariance<1>(State::quat_nominal.idx + 2, fminf(heading_var, heading_var_max));
 }
 
 void Ekf::resetQuatCov(const float yaw_noise)

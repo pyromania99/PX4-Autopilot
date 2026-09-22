@@ -329,7 +329,7 @@ void CommandFrontEnd::buildTrajectoryCommand(const mc_ctrl::ControllerState &sta
 	_command.axis_velocity = _vcm.flag_control_velocity_enabled;
 	_command.axis_altitude = _vcm.flag_control_altitude_enabled;
 	_command.axis_climb_rate = _vcm.flag_control_climb_rate_enabled;
-	_command.axis_acceleration = _vcm.flag_control_acceleration_enabled;
+	_command.axis_acceleration = _vcm.flag_control_velocity_enabled;
 }
 
 void CommandFrontEnd::buildAttitudeCommand(const mc_ctrl::ControllerState &state, Publications &publications)

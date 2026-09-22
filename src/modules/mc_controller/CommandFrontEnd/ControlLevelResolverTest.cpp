@@ -59,21 +59,22 @@ constexpr uint8_t FW = vehicle_status_s::VEHICLE_TYPE_FIXED_WING;
 /**
  * Build a vehicle_control_mode exactly the way Commander does:
  * mode_util::getVehicleControlMode() then the flag_multicopter_position_control_enabled
- * derivation from Commander.cpp:2652-2658.
+ * derivation from Commander::updateControlMode().
  */
 vehicle_control_mode_s modeFor(uint8_t nav_state, uint8_t vehicle_type,
 			       const offboard_control_mode_s &ocm)
 {
 	vehicle_control_mode_s vcm{};   // getVehicleControlMode() does not zero it itself
-	mode_util::getVehicleControlMode(nav_state, vehicle_type, ocm, vcm);
+	// The trailing setpoint type only applies to NAVIGATION_STATE_EXTERNAL1..8, which these
+	// cases never use; pass the same default Commander starts from (Modes::Mode::kDefaultSetpointType).
+	mode_util::getVehicleControlMode(nav_state, vehicle_type, ocm, vcm, mode_util::SetpointType::Trajectory);
 
 	vcm.flag_multicopter_position_control_enabled =
 		(vehicle_type == MC)
 		&& (vcm.flag_control_altitude_enabled
 		    || vcm.flag_control_climb_rate_enabled
 		    || vcm.flag_control_position_enabled
-		    || vcm.flag_control_velocity_enabled
-		    || vcm.flag_control_acceleration_enabled);
+		    || vcm.flag_control_velocity_enabled);
 	return vcm;
 }
 
@@ -189,17 +190,6 @@ TEST(ControlLevelResolverTest, StickGateEquivalenceWithStockModules)
 		EXPECT_EQ(stock_acro_gate && vcm.flag_control_rates_enabled,
 			  framework_acro_gate) << "acro stick gate mismatch for nav_state " << int(ns);
 	}
-}
-
-TEST(ControlLevelResolverTest, TerminationAlwaysYieldsNone)
-{
-	vehicle_control_mode_s vcm{};
-	vcm.flag_control_rates_enabled = true;
-	vcm.flag_control_attitude_enabled = true;
-	vcm.flag_multicopter_position_control_enabled = true;
-	vcm.flag_control_termination_enabled = true;
-
-	EXPECT_EQ(resolveLevel(vcm, MC, false, false), ControlLevel::None);
 }
 
 TEST(ControlLevelResolverTest, RatesDisabledYieldsNone)

@@ -70,12 +70,6 @@ protected:
 	bool _get_maybe_landed_state() override;
 	bool _get_freefall_state() override;
 	bool _get_ground_effect_state() override;
-	bool _get_in_descend() override { return _in_descend; }
-	bool _get_has_low_throttle() override { return _has_low_throttle; }
-	bool _get_horizontal_movement() override { return _horizontal_movement; }
-	bool _get_vertical_movement() override { return _vertical_movement; }
-	bool _get_rotational_movement() override { return _rotational_movement; }
-	bool _get_close_to_ground_or_skipped_check() override { return _close_to_ground_or_skipped_check; }
 
 private:
 	bool _is_close_to_ground();
@@ -110,6 +104,8 @@ private:
 	bool _flag_control_climb_rate_enabled{false};
 
 	float _vehicle_thrust_setpoint_throttle{0.f};
+	hrt_abstime _vehicle_thrust_setpoint_last_update{0};
+	bool _vehicle_thrust_setpoint_valid{false};
 
 	uint8_t _takeoff_state{takeoff_status_s::TAKEOFF_STATE_DISARMED};
 
@@ -119,10 +115,6 @@ private:
 
 	bool _in_descend{false};		///< vehicle is commanded to desend
 	bool _horizontal_movement{false};	///< vehicle is moving horizontally
-	bool _vertical_movement{false};
-	bool _rotational_movement{false};
-	bool _has_low_throttle{false};
-	bool _close_to_ground_or_skipped_check{false};
 	bool _below_gnd_effect_hgt{false};	///< vehicle height above ground is below height where ground effect occurs
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(

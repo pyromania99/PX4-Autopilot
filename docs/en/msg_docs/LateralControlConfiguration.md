@@ -4,16 +4,18 @@ pageClass: is-wide-page
 
 # LateralControlConfiguration (UORB message)
 
-Fixed Wing Lateral Control Configuration message. Used by the fw_lateral_longitudinal_control module to constrain FixedWingLateralSetpoint messages.
+Fixed Wing Lateral Control Configuration message.
+
+Used by the fw_lateral_longitudinal_control module to constrain FixedWingLateralSetpoint messages.
 
 **TOPICS:** lateral_control_configuration
 
 ## Fields
 
-| Name              | Type      | Unit [Frame] | Range/Enum | Description                                                                  |
-| ----------------- | --------- | ------------ | ---------- | ---------------------------------------------------------------------------- |
-| timestamp         | `uint64`  |              |            | time since system start (microseconds)                                       |
-| lateral_accel_max | `float32` | m/s^2        |            | currently maps to a maximum roll angle, accel_max = tan(roll_max) \* GRAVITY |
+| Name                                                | Type      | Unit [Frame] | Range/Enum | Description                                                                  |
+| --------------------------------------------------- | --------- | ------------ | ---------- | ---------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                 | `uint64`  | us           |            | Time since system start                                                      |
+| <a id="fld_lateral_accel_max"></a>lateral_accel_max | `float32` | m/s^2        |            | Currently maps to a maximum roll angle, accel_max = tan(roll_max) \* GRAVITY |
 
 ## Constants
 
@@ -29,13 +31,14 @@ Fixed Wing Lateral Control Configuration message. Used by the fw_lateral_longitu
 
 ```c
 # Fixed Wing Lateral Control Configuration message
+#
 # Used by the fw_lateral_longitudinal_control module to constrain FixedWingLateralSetpoint messages.
 
 uint32 MESSAGE_VERSION = 0
 
-uint64 timestamp          # time since system start (microseconds)
+uint64 timestamp # [us] Time since system start
 
-float32 lateral_accel_max # [m/s^2] currently maps to a maximum roll angle, accel_max = tan(roll_max) * GRAVITY
+float32 lateral_accel_max # [m/s^2] Currently maps to a maximum roll angle, accel_max = tan(roll_max) * GRAVITY
 ```
 
 :::

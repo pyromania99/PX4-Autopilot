@@ -10,23 +10,23 @@ Configurable overrides by (external) modes or mode executors.
 
 ## Fields
 
-| 명칭                                                                                       | 형식       | Unit [Frame] | Range/Enum | 설명                                                                                              |
-| ---------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
-| timestamp                                                                                | `uint64` |                                                                  |            | time since system start (microseconds)                                       |
-| disable_auto_disarm                            | `bool`   |                                                                  |            | Prevent the drone from automatically disarming after landing (if configured) |
-| defer_failsafes                                                     | `bool`   |                                                                  |            | Defer all failsafes that can be deferred (until the flag is cleared)         |
-| defer_failsafes_timeout_s | `int16`  |                                                                  |            | Maximum time a failsafe can be deferred. 0 = system default, -1 = no timeout    |
-| source_type                                                         | `int8`   |                                                                  |            |                                                                                                 |
-| source_id                                                           | `uint8`  |                                                                  |            | ID depending on source_type                                                |
+| 명칭                                                                                                                                 | 형식       | Unit [Frame] | Range/Enum | 설명                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                                                                | `uint64` |                                                                  |            | time since system start (microseconds)                                       |
+| <a id="fld_disable_auto_disarm"></a>disable_auto_disarm                                  | `bool`   |                                                                  |            | Prevent the drone from automatically disarming after landing (if configured) |
+| <a id="fld_defer_failsafes"></a>defer_failsafes                                                               | `bool`   |                                                                  |            | Defer all failsafes that can be deferred (until the flag is cleared)         |
+| <a id="fld_defer_failsafes_timeout_s"></a>defer_failsafes_timeout_s | `int16`  |                                                                  |            | Maximum time a failsafe can be deferred. 0 = system default, -1 = no timeout    |
+| <a id="fld_source_type"></a>source_type                                                                       | `int8`   |                                                                  |            |                                                                                                 |
+| <a id="fld_source_id"></a>source_id                                                                           | `uint8`  |                                                                  |            | ID depending on source_type                                                |
 
 ## Constants
 
-| 명칭                                                                                                                                 | 형식       | Value | 설명 |
-| ---------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- | -- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                                               | `uint32` | 0     |    |
-| <a href="#SOURCE_TYPE_MODE"></a> SOURCE_TYPE_MODE                                        | `int8`   | 0     |    |
-| <a href="#SOURCE_TYPE_MODE_EXECUTOR"></a> SOURCE_TYPE_MODE_EXECUTOR | `int8`   | 1     |    |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH                                        | `uint8`  | 4     |    |
+| 명칭                                                                                                                               | 형식       | Value | 설명 |
+| -------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- | -- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                                               | `uint32` | 0     |    |
+| <a id="#SOURCE_TYPE_MODE"></a> SOURCE_TYPE_MODE                                        | `int8`   | 0     |    |
+| <a id="#SOURCE_TYPE_MODE_EXECUTOR"></a> SOURCE_TYPE_MODE_EXECUTOR | `int8`   | 1     |    |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH                                        | `uint8`  | 4     |    |
 
 ## Source Message
 

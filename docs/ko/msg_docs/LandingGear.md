@@ -8,18 +8,18 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 명칭                                | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
-| --------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                         | `uint64` |                                                                  |            | time since system start (microseconds) |
-| landing_gear | `int8`   |                                                                  |            |                                                           |
+| 명칭                                                             | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
+| -------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                            | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_landing_gear"></a>landing_gear | `int8`   |                                                                  |            |                                                           |
 
 ## Constants
 
-| 명칭                                                       | 형식     | Value | 설명                     |
-| -------------------------------------------------------- | ------ | ----- | ---------------------- |
-| <a href="#GEAR_UP"></a> GEAR_UP     | `int8` | 1     | landing gear up        |
-| <a href="#GEAR_DOWN"></a> GEAR_DOWN | `int8` | -1    | landing gear down      |
-| <a href="#GEAR_KEEP"></a> GEAR_KEEP | `int8` | 0     | keep the current state |
+| 명칭                                                     | 형식     | Value | 설명                     |
+| ------------------------------------------------------ | ------ | ----- | ---------------------- |
+| <a id="#GEAR_UP"></a> GEAR_UP     | `int8` | 1     | landing gear up        |
+| <a id="#GEAR_DOWN"></a> GEAR_DOWN | `int8` | -1    | landing gear down      |
+| <a id="#GEAR_KEEP"></a> GEAR_KEEP | `int8` | 0     | keep the current state |
 
 ## Source Message
 

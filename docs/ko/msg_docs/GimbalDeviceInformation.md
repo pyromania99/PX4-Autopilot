@@ -4,45 +4,45 @@ pageClass: is-wide-page
 
 # GimbalDeviceInformation (UORB message)
 
-**TOPICS:** gimbal_deviceinformation
+**TOPICS:** gimbal_device_information
 
 ## Fields
 
-| 명칭                                                         | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
-| ---------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                                                  | `uint64`    |                                                                  |            | time since system start (microseconds) |
-| vendor_name                           | `uint8[32]` |                                                                  |            |                                                           |
-| model_name                            | `uint8[32]` |                                                                  |            |                                                           |
-| custom_name                           | `uint8[32]` |                                                                  |            |                                                           |
-| firmware_version                      | `uint32`    |                                                                  |            |                                                           |
-| hardware_version                      | `uint32`    |                                                                  |            |                                                           |
-| uid                                                        | `uint64`    |                                                                  |            |                                                           |
-| cap_flags                             | `uint16`    |                                                                  |            |                                                           |
-| custom_cap_flags | `uint16`    |                                                                  |            |                                                           |
-| roll_min                              | `float32`   | rad                                                              |            |                                                           |
-| roll_max                              | `float32`   | rad                                                              |            |                                                           |
-| pitch_min                             | `float32`   | rad                                                              |            |                                                           |
-| pitch_max                             | `float32`   | rad                                                              |            |                                                           |
-| yaw_min                               | `float32`   | rad                                                              |            |                                                           |
-| yaw_max                               | `float32`   | rad                                                              |            |                                                           |
-| gimbal_device_id | `uint8`     |                                                                  |            |                                                           |
+| 명칭                                                                                          | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
+| ------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                         | `uint64`    |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_vendor_name"></a>vendor_name                                | `uint8[32]` |                                                                  |            |                                                           |
+| <a id="fld_model_name"></a>model_name                                  | `uint8[32]` |                                                                  |            |                                                           |
+| <a id="fld_custom_name"></a>custom_name                                | `uint8[32]` |                                                                  |            |                                                           |
+| <a id="fld_firmware_version"></a>firmware_version                      | `uint32`    |                                                                  |            |                                                           |
+| <a id="fld_hardware_version"></a>hardware_version                      | `uint32`    |                                                                  |            |                                                           |
+| <a id="fld_uid"></a>uid                                                                     | `uint64`    |                                                                  |            |                                                           |
+| <a id="fld_cap_flags"></a>cap_flags                                    | `uint16`    |                                                                  |            |                                                           |
+| <a id="fld_custom_cap_flags"></a>custom_cap_flags | `uint16`    |                                                                  |            |                                                           |
+| <a id="fld_roll_min"></a>roll_min                                      | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_roll_max"></a>roll_max                                      | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_pitch_min"></a>pitch_min                                    | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_pitch_max"></a>pitch_max                                    | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_yaw_min"></a>yaw_min                                        | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_yaw_max"></a>yaw_max                                        | `float32`   | rad                                                              |            |                                                           |
+| <a id="fld_gimbal_device_id"></a>gimbal_device_id | `uint8`     |                                                                  |            |                                                           |
 
 ## Constants
 
-| 명칭                                                                                                                                                                                                                                        | 형식       | Value | 설명 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- | -- |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT                                          | `uint32` | 1     |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_NEUTRAL"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_NEUTRAL                                          | `uint32` | 2     |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_AXIS                 | `uint32` | 4     |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_FOLLOW             | `uint32` | 8     |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_LOCK                 | `uint32` | 16    |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_AXIS               | `uint32` | 32    |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_FOLLOW           | `uint32` | 64    |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_LOCK               | `uint32` | 128   |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_AXIS                   | `uint32` | 256   |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_FOLLOW               | `uint32` | 512   |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK                   | `uint32` | 1024  |    |
-| <a href="#GIMBAL_DEVICE_CAP_FLAGS_SUPPORTS_INFINITE_YAW"></a> GIMBAL_DEVICE_CAP_FLAGS_SUPPORTS_INFINITE_YAW | `uint32` | 2048  |    |
+| 명칭                                                                                                                                                                                                                                      | 형식       | Value | 설명 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- | -- |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT                                          | `uint32` | 1     |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_NEUTRAL"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_NEUTRAL                                          | `uint32` | 2     |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_AXIS                 | `uint32` | 4     |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_FOLLOW             | `uint32` | 8     |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_ROLL_LOCK                 | `uint32` | 16    |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_AXIS               | `uint32` | 32    |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_FOLLOW           | `uint32` | 64    |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_PITCH_LOCK               | `uint32` | 128   |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_AXIS"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_AXIS                   | `uint32` | 256   |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_FOLLOW"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_FOLLOW               | `uint32` | 512   |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK"></a> GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK                   | `uint32` | 1024  |    |
+| <a id="#GIMBAL_DEVICE_CAP_FLAGS_SUPPORTS_INFINITE_YAW"></a> GIMBAL_DEVICE_CAP_FLAGS_SUPPORTS_INFINITE_YAW | `uint32` | 2048  |    |
 
 ## Source Message
 

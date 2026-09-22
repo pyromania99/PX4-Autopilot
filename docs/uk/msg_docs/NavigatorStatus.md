@@ -10,18 +10,18 @@ Current status of a Navigator mode. Можливі значення nav_state в
 
 ## Fields
 
-| Назва                          | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
-| failure                        | `uint8`  |                                                                  |            | Navigator failure enum                                    |
+| Назва                                                    | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_nav_state"></a>nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
+| <a id="fld_failure"></a>failure                          | `uint8`  |                                                                  |            | Navigator failure enum                                    |
 
 ## Constants
 
-| Назва                                                          | Тип     | Значення | Опис                                                |
-| -------------------------------------------------------------- | ------- | -------- | --------------------------------------------------- |
-| <a href="#FAILURE_NONE"></a> FAILURE_NONE | `uint8` | 0        |                                                     |
-| <a href="#FAILURE_HAGL"></a> FAILURE_HAGL | `uint8` | 1        | Target altitude exceeds maximum height above ground |
+| Назва                                                        | Тип     | Значення | Опис                                                |
+| ------------------------------------------------------------ | ------- | -------- | --------------------------------------------------- |
+| <a id="#FAILURE_NONE"></a> FAILURE_NONE | `uint8` | 0        |                                                     |
+| <a id="#FAILURE_HAGL"></a> FAILURE_HAGL | `uint8` | 1        | Target altitude exceeds maximum height above ground |
 
 ## Source Message
 

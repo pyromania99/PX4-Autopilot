@@ -1,5 +1,17 @@
 # Release Process
 
+<script setup>
+import { useData } from 'vitepress'
+const { site } = useData();
+</script>
+
+<div v-if="site.title !== 'PX4 Guide (main)'">
+  <div class="custom-block danger">
+    <p class="custom-block-title">This page is on a release branch, and hence probably out of date. <a href="https://docs.px4.io/main/en/releases/release_process">See the latest version</a>.</p>
+  </div>
+  <Redirect to="https://docs.px4.io/main/en/releases/release_process" />
+</div>
+
 This page documents the PX4 release process for maintainers. It covers the steps from preparing a release candidate through to the final announcement.
 
 ## Overview
@@ -45,7 +57,12 @@ Release notes are built incrementally in [`main.md`](../releases/main.md), which
 3. Reset `main.md` to a clean template for the next release cycle
 4. Verify that documentation for all included contributions is complete
 5. Search for instances of `main (planned for:` and replace with the release version now that it is known.
-   So, for example `<Badge type="tip" text="main (planned for: PX4 v1.18)" />` is replaced with `<Badge type="tip" text="PX4 v1.18" />`
+   So, for example `<Badge type="tip" text="main (planned for PX4 v1.xx" />` is replaced with `<Badge type="tip" text="PX4 v1.xx" />`.
+
+   Note that once the name of the next version is confirmed, badges may use the second form (e.g. `<Badge type="tip" text="PX4 v1.18" />`.
+
+6. Search for instances of `<Badge type="warning" text="Experimental" />`.
+   Remove this for features that are considered core and/or stable.
 
 ::: tip
 Community members are encouraged to document changes as they are merged into `main`. This distributes the documentation workload and ensures changes are captured while they're fresh.

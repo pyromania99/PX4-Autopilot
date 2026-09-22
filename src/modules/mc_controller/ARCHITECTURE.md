@@ -421,7 +421,7 @@ which are safety behaviour.
 Net effect on the stock modules: **−205 lines, +19 lines**, a pure relocation.
 
 Notably, **no parameter definitions moved.** Definitions are already scattered
-(`MC_AIRMODE` is defined in `src/lib/mixer_module/params.c`, `MPC_MAN_TILT_MAX` in
+(`MC_AIRMODE` is defined in `src/lib/mixer_module/params.yaml`, `MPC_MAN_TILT_MAX` in
 `mc_pos_control`, `MC_ACRO_*` in `mc_rate_control`) and `DEFINE_PARAMETERS` binds
 purely by name. Leaving them in place made the change smaller and let
 "`parameters.xml` diff is empty" serve as a real regression gate.
@@ -541,14 +541,12 @@ must not warn about it.
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEnd.{hpp,cpp}` | setpoint sourcing, takeoff ramp, failsafe, limits |
 | `src/modules/mc_controller/CommandFrontEnd/CommandFrontEndTest.cpp` | setpoint-sourcing semantics |
 | `src/modules/mc_controller/TrajectoryStage/TrajectoryStage.{hpp,cpp}` | shared, opt-in trajectory stage: per-axis PD, position integrator, lateral clamp, collective |
-| `src/modules/mc_controller/TrajectoryStage/trajectory_stage_params.c` | `MC_OL_*` integrator gains (both ship at 0) |
 | `src/modules/mc_controller/TrajectoryStage/TrajectoryStageTest.cpp` | integrator, hover-thrust continuity, collective derivation |
 | `src/modules/mc_controller/controllers/CascadedPdController.{hpp,cpp}` | cascaded PD, geometric attitude law, no yaw control |
 | `src/modules/mc_controller/controllers/CascadedPdControllerTest.cpp` | property tests for the PD law |
-| `src/modules/mc_controller/controllers/cascaded_pd_params.c` | `MC_PD_*` parameters |
 | `src/modules/mc_controller/controllers/TemplateController.{hpp,cpp}` | skeleton controller |
-| `src/modules/mc_controller/controllers/template_controller_params.c` | `MC_TPL_*` parameters |
 | `src/modules/mc_controller/controllers/ControllerRegistry.{hpp,cpp}` | `MC_CTRL_ALG` → controller |
+| `src/modules/mc_controller/module.yaml` | every `MC_*` parameter the framework owns (`MC_CTRL_*`, `MC_OL_*`, `MC_PD_*`, `MC_EIG_*`, `MC_TPL_*`, ...) |
 | `src/modules/mc_controller/MulticopterController.{hpp,cpp}` | the module + inner work item: uORB wiring, gyro-rate pipeline, output stage |
 | `src/modules/mc_controller/module.yaml` | `MC_CTRL_ALG`, `MC_CTRL_WD_MS` |
 | `src/modules/mc_controller/Kconfig` | build option |
@@ -835,8 +833,7 @@ does. Asserting exact zero was wrong; it now asserts the wound-up history is gon
 ### Stage 7 — The module and the output stage
 
 **Changes:** `MulticopterController` (the `WorkItem`, uORB wiring, output stage),
-`ControllerRegistry`, `TemplateController`, `module.yaml`,
-`template_controller_params.c`.
+`ControllerRegistry`, `TemplateController`, `module.yaml`.
 
 **Live pipeline, disarmed SITL, stock modules stopped first** (two publishers on
 `vehicle_torque_setpoint` would be meaningless data, not a test):
@@ -1280,10 +1277,9 @@ Reverting is always `param set MC_CTRL_ALG 0` + reboot.
 Five steps, detailed in [`README.md`](README.md):
 
 1. copy `controllers/TemplateController.{hpp,cpp}`, rename the class
-2. add `controllers/my_controller_params.c` with `MC_MY_*` parameters
-3. add ONLY `MyController.cpp/.hpp` to `SRCS` in `controllers/CMakeLists.txt` -
-   never the `_params.c`, which `src/lib/parameters` generates from a directory
-   scan and which is a redefinition error if compiled in as well
+2. declare your `MC_MY_*` parameters in `module.yaml` (PX4 no longer scans `.c`
+   files for `PARAM_DEFINE_*`, so a `params.c` would be ignored silently)
+3. add `MyController.cpp/.hpp` to `SRCS` in `controllers/CMakeLists.txt`
 4. add an `Algorithm` enumerator and one `case` in `ControllerRegistry`
 5. add the value to `MC_CTRL_ALG` in `module.yaml`
 

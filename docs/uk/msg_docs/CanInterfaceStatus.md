@@ -4,17 +4,17 @@ pageClass: is-wide-page
 
 # CanInterfaceStatus (повідомлення UORB)
 
-**TOPICS:** can_interfacestatus
+**TOPICS:** can_interface_status
 
 ## Fields
 
-| Назва                          | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| інтерфейс                      | `uint8`  |                                                                  |            |                                                           |
-| io_errors | `uint64` |                                                                  |            |                                                           |
-| frames_tx | `uint64` |                                                                  |            |                                                           |
-| frames_rx | `uint64` |                                                                  |            |                                                           |
+| Назва                                                    | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_interface"></a>interface                      | `uint8`  |                                                                  |            |                                                           |
+| <a id="fld_io_errors"></a>io_errors | `uint64` |                                                                  |            |                                                           |
+| <a id="fld_frames_tx"></a>frames_tx | `uint64` |                                                                  |            |                                                           |
+| <a id="fld_frames_rx"></a>frames_rx | `uint64` |                                                                  |            |                                                           |
 
 ## Source Message
 

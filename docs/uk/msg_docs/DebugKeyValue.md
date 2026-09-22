@@ -4,15 +4,15 @@ pageClass: is-wide-page
 
 # DebugKeyValue (повідомлення UORB)
 
-**TOPICS:** debug_keyvalue
+**TOPICS:** debug_key_value
 
 ## Fields
 
-| Назва     | Тип        | Unit [Frame] | Range/Enum | Опис                                                      |
-| --------- | ---------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp | `uint64`   |                                                                  |            | time since system start (microseconds) |
-| key       | `char[10]` |                                                                  |            | max. 10 characters as key / name          |
-| value     | `float32`  |                                                                  |            | the value to send as debug output                         |
+| Назва                               | Тип        | Unit [Frame] | Range/Enum | Опис                                                      |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64`   |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_key"></a>key             | `char[10]` |                                                                  |            | max. 10 characters as key / name          |
+| <a id="fld_value"></a>value         | `float32`  |                                                                  |            | the value to send as debug output                         |
 
 ## Source Message
 

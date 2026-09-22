@@ -18,7 +18,7 @@ The [PX4 ROS 2 Interface Library](../ros2/px4_ros2_interface_lib.md) is a C++ li
 
 开发者可使用该库创建并动态注册以 ROS 2 编写的模式。
 这些模式会动态注册到 PX4 中，并且对于地面站或其他外部系统而言，它们看起来就像是 PX4 的一部分。
-开发者甚至可以用功能增强的 ROS 2 版本模式替换 PX4 中的默认模式，且若 ROS 2 模式失效，系统会回退到原始版本的模式。
+They can even replace the default modes in PX4 with enhanced ROS 2 versions, falling back to the original version if the ROS 2 mode fails.
 
 该库还提供了用于发送不同类型设定点的类，其涵盖范围从高层级的导航任务一直到直接的执行器控制。
 这些类对 PX4 所使用的内部设定点进行了抽象处理，因此可用于为未来的 PX4 和 ROS 版本提供统一的 ROS 2 接口。
@@ -36,7 +36,7 @@ You are welcome to add and contribute missing classes.
 
 该图从概念层面概述了控制接口模式与模式执行器如何与 PX4 进行交互。
 
-![ROS2 模式概览图](../../assets/middleware/ros2/px4_ros2_interface_lib/ros2_modes_overview.svg)
+![ROS 2 modes overview diagram](../../assets/middleware/ros2/px4_ros2_interface_lib/ros2_modes_overview.svg)
 
 <!-- Source: https://docs.google.com/drawings/d/1WByCfgcytnaow7r41VhYJL8OGrw1RjFO51GoPMQBCNA/edit -->
 
@@ -351,7 +351,7 @@ private:
 以下章节提供了支持的设置点类型列表：
 
 - [MulticopterGotoSetpointType](#go-to-setpoint-multicoptergotosetpointtype): <Badge type="warning" text="MC only" /> 平滑的位置控制以及（可选的）航向控制
-- [FwLateralLongitudinalSetpointType](#fixed-wing-lateral-and-longitudinal-setpoint-fwlaterallongitudinalsetpointtype): <Badge type="warning" text="FW only" /> <Badge type="tip" text="PX4 v1.17" /> Direct control of lateral and longitudinal fixed wing dynamics
+- [FwLateralLongitudinalSetpointType](#fw-lateral-longitudinal-setpoint): <Badge type="warning" text="FW only" /> <Badge type="tip" text="PX4 v1.17" /> Direct control of lateral and longitudinal fixed wing dynamics
 - [DirectActuatorsSetpointType](#direct-actuator-control-setpoint-directactuatorssetpointtype)：直接控制发动机和飞行地面servo setpoints
 - [Rover Setpoints](#rover-setpoints): <Badge type="tip" text="PX4 v1.17" /> Direct access to rover control setpoints (Position, Speed, Attitude, Rate, Throttle and Steering).
 
@@ -418,7 +418,7 @@ _goto_setpoint->update(
   max_heading_rate_rad_s);
 ```
 
-#### 固定翼横向与纵向设定值（FwLateralLongitudinalSetpointType，固定翼横向纵向设定值类型）
+#### Fixed-Wing Lateral and Longitudinal Setpoint (FwLateralLongitudinalSetpointType) {#fw-lateral-longitudinal-setpoint}
 
 <Badge type="warning" text="Fixed wing only" /> <Badge type="tip" text="PX4 v1.17" />
 
@@ -580,7 +580,7 @@ _fw_lateral_longitudinal_setpoint->update(setpoint_s, config_s);
 
 通过控制界面暴露的 RoverSetpointTypes 是这些设置点的组合，导致有效的控制输入：
 
-| SetpointType                                                                                                                        | 安装位置                        | Speed                                            | 油门                                               | Attitude                                         | 频率                                               | Steering                                         | Control Flags                                          |
+| SetpointType                                                                                                                        | 安装位置                        | Speed                                            | Throttle                                         | Attitude                                         | 频率                                               | Steering                                         | Control Flags                                          |
 | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------ |
 | [RoverPosition](https://auterion.github.io/px4-ros2-interface-lib/classpx4__ros2_1_1RoverPositionSetpointType.html#details)         | &check; | (&check;) | (&check;) | (&check;) | (&check;) | (&check;) | Position, Velocity, Attitude, Rate, Control Allocation |
 | [RoverSpeedAttitude](https://auterion.github.io/px4-ros2-interface-lib/classpx4__ros2_1_1RoverSpeedAttitudeSetpointType.html)       |                             | &check;                      | (&check;) | &check;                      | (&check;) | (&check;) | Velocity, Attitude, Rate, Control Allocation           |
@@ -601,7 +601,7 @@ _fw_lateral_longitudinal_setpoint->update(setpoint_s, config_s);
 要在外部飞行模式下控制VTOL，需确保根据当前飞行配置返回正确的设定值类型：
 
 - 多旋翼模式：使用与多旋翼控制兼容的设定值类型。 例如：要么[`MulticopterGotoSetpointType`](#go-to-setpoint-multicoptergotosetpointtype)要么[`TrajectorySetpointType`](https://auterion.github.io/px4-ros2-interface-lib/classpx4__ros2_1_1TrajectorySetpointType.html)。
-- 固定翼形模式：使用 [`FwLateralLongitudinalSetpointType`](#fixed-wing-lateral-and-longitudinal-setpoint-fwlaterallongitudinalsetpointtype)。
+- Fixed-wing mode: Use the [`FwLateralLongitudinalSetpointType`](#fw-lateral-longitudinal-setpoint).
 
 只要VTOL在整个外部模式期间始终处于多旋翼模式或固定翼模式中的任意一种，就无需额外处理。
 

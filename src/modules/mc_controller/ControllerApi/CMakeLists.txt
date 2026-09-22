@@ -40,13 +40,16 @@ target_compile_options(MulticopterControllerApi PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
 target_include_directories(MulticopterControllerApi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Unit rather than functional gtest: the interface types are header-only plus a
-# small .cpp, ModuleParams is header-only, and nothing here touches the parameter
-# system or uORB at runtime. Matches the other module-local tests (PositionControl,
-# AttitudeControl).
+# small .cpp, and nothing here touches the parameter system or uORB at runtime.
+# Matches the other module-local tests (PositionControl, AttitudeControl).
+#
+# px4_platform is linked for ModuleParams alone. It stopped being header-only in
+# 6c53460f2e, which out-lined setParent() and the destructor to save flash, so the
+# base class now needs a definition at link time even though no parameter is read.
 #
 # The functional variant does not link for this target (undefined orb_publish /
 # uorb_start / init_app_map). Note that is NOT a module-subdirectory limitation -
 # VehicleState/ uses px4_add_functional_gtest from a sibling directory and links
 # fine because it genuinely pulls in the parameter system. Prefer the unit variant
 # wherever the code under test needs nothing from the runtime.
-px4_add_unit_gtest(SRC ControllerApiTest.cpp LINKLIBS MulticopterControllerApi)
+px4_add_unit_gtest(SRC ControllerApiTest.cpp LINKLIBS MulticopterControllerApi px4_platform)

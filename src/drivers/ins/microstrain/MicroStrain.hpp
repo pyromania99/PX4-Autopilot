@@ -167,7 +167,7 @@ private:
 
 	void initializeRefPos();
 
-	void updateGeoidHeight(float geoid_height, float t);
+	void updateGeoidHeight(float geoid_height, hrt_abstime t);
 
 	void sendGPSAiding();
 
@@ -201,18 +201,18 @@ private:
 	float ext_mag_offset[3] = {0};
 	float optical_flow_offset[3] = {0};
 	float ext_heading_offset[3] = {0};
-	mip_aiding_frame_config_command_rotation rotation_sens = {0};
-	mip_aiding_frame_config_command_rotation rotation_gnss = {0};
-	mip_aiding_frame_config_command_rotation rotation_ext_mag = {0};
-	mip_aiding_frame_config_command_rotation rotation_oflow = {0};
-	mip_aiding_frame_config_command_rotation rotation_ext_heading = {0};
+	mip_aiding_frame_config_command_rotation rotation_sens = {};
+	mip_aiding_frame_config_command_rotation rotation_gnss = {};
+	mip_aiding_frame_config_command_rotation rotation_ext_mag = {};
+	mip_aiding_frame_config_command_rotation rotation_oflow = {};
+	mip_aiding_frame_config_command_rotation rotation_ext_heading = {};
 
 	float ext_mag_uncert = 0.0;
 	float opt_flow_uncert = 0.0;
 
 	AlphaFilter<float> _geoid_height_lpf;
-	uint64_t _last_geoid_height_update_us{0};
-	static constexpr float kGeoidHeightLpfTimeConstant = 10.f;
+	hrt_abstime _last_geoid_height_update_us{0};
+	static constexpr hrt_abstime kGeoidHeightLpfTimeConstant = 10_s;
 
 	MapProjection _pos_ref{};
 	double _ref_alt = 0;

@@ -326,9 +326,9 @@ GSF 应用于各个 3 状态 EKF 输出的权重位于 `weight` 字段中。
 
 为了让 ECL 接受 GNSS 数据进行导航，需要在一段时间内满足某些最低要求，该时间由 [EKF2_REQ_GPS_H](../advanced_config/parameter_reference.md#EKF2_REQ_GPS_H) 定义（默认为 10 秒）。
 
-最小值在 [EKF2_REQ_\*](../advanced_config/parameter_reference.md#EKF2_REQ_EPH) 参数中定义，并且可以使用 [EKF2_GPS_CHECK](../advanced_config/parameter_reference.md#EKF2_GPS_CHECK) 参数启用/禁用每个检查。
+最小值在 [EKF&#x32;_&#x52;EQ_\*](../advanced_config/parameter_reference.md#EKF2_REQ_EPH) 参数中定义，并且可以使用 [EKF2_GPS_CHECK](../advanced_config/parameter_reference.md#EKF2_GPS_CHECK) 参数启用/禁用每个检查。
 
-下表显示了直接报告或从 GNSS 数据计算出的不同指标，以及 ECL 使用数据所需的最小值。
+下表列出了直接从 GNSS 数据中报告或计算的不同指标，以及 ECL 使用这些数据所需满足的最低要求值。
 此外，_平均值 (Average Value)_ 列显示了可能从标准 GNSS 模块（例如 u-blox M8 系列）合理获得的典型值 - 即被认为良好/可接受的值。
 
 | 指标 (Metric)     | 最低要求                                                                                                                                                                                                             | 平均值 (Average Value) | 单位 (Units) | 备注                                                                                                                                                                                                                                            |
@@ -339,7 +339,7 @@ GSF 应用于各个 3 状态 EKF 输出的权重位于 `weight` 字段中。
 | sacc                               | <&nbsp;0.5 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_SACC))   | 0.2                    | 米/秒                           | 水平速度误差的标准偏差                                                                                                                                                                                                                                   |
 | 定位类型 (fix type) | ≥&nbsp;3                                                                                                                                                                                     | 4                                      | -                             | 0-1: 无定位, 2: 2D 定位, 3: 3D 定位, 4: RTCM 码差分, 5: 实时动态 (RTK) 浮点解, 6: 实时动态 (RTK) 固定解, 8: 外推值 |
 | 位置精度衰減因子(PDOP)  | <&nbsp;2.5 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_PDOP))   | 1.0                    | -                             | 位置精度衰减                                                                                                                                                                                                                                        |
-| hpos 漂移率                           | <&nbsp;0.1 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_HDRIFT)) | 0.01                   | 米/秒                           | 静止时基于 GNSS 位置计算的漂移率                                                                                                                                                                                                                           |
+| hpos 漂移率                           | <&nbsp;0.1 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_HDRIFT)) | 0.01                   | 米/秒                           | 静止时基于 GNSS 位置计算的漂移率。                                                                                                                                                                                                                          |
 | vpos 漂移率                           | <&nbsp;0.2 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_VDRIFT)) | 0.02                   | 米/秒                           | 静止时基于 GNSS 高度计算的漂移率。                                                                                                                                                                                                                          |
 | hspd                               | <&nbsp;0.1 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_HDRIFT)) | 0.01                   | 米/秒                           | 报告的 GNSS 水平速度的滤波幅值。                                                                                                                                                                                                                           |
 | 报告的 GNSS 垂直速度的滤波幅值。                | <&nbsp;0.2 ([EKF2_REQ_EPH](../advanced_config/parameter_reference.md#EKF2_REQ_VDRIFT)) | 0.02                   | 米/秒                           | 所报告的全球导航卫星系统垂直速度的滤波量级。                                                                                                                                                                                                                        |
@@ -361,6 +361,10 @@ PX4 的 GNSS 故障检测使用基于测量验证的选择性融合控制来防�
 - **航位推算 (`1`)**: 假设 GNSS 可能会无限期丢失，因此当我们有其他位置数据估计时应避免重置。
   如果没有其他位置或速度源可用，EKF2 可能会重置。
   如果 GNSS 高度或水平位置数据漂移，系统将同时禁用这两个测量值的融合（即使其中一个仍能通过验证），并避免执行重置。
+
+:::tip
+See also [Fault Detection](https://youtu.be/CMGQJNPiTJg?si=sFtdf4AQbcOH8-u8) in "Fuse, Reset, or Reject? 处理EKF2中的各种数据来源"_PX4 开发者峰会2025_, Marco Hauswirth, Auterion AG
+:::
 
 ##### 检测逻辑
 
@@ -402,6 +406,16 @@ PX4 的 GNSS 故障检测使用基于测量验证的选择性融合控制来防�
 - **恢复**: 只有将数据标记为无效的特定检查才能重新启用融合。
 - **替代来源**: 航位推算模式通过在允许重置之前要求没有替代导航源，提供了增强的保护。
 - **启动漏洞**: 初始错误 GNSS 数据无法自动检测；需要操作员干预和手动位置校正。
+
+#### Ground Position Lock
+
+When a vehicle equipped with dead-reckoning sensors (e.g. airspeed for fixed-wing, or optical flow) is sitting on the ground before takeoff, those sensors provide little to no aiding — airspeed and optical flow measurements are unreliable at rest. In this case, the EKF relies on _constant position fusion_ (fusing a synthetic position measurement at the last known position) to prevent the estimate from drifting. However, this is only active when the vehicle is detected as stationary, so handling the vehicle or starting the engine can interrupt it.
+
+To counter this, [EKF2_POS_LOCK](../advanced_config/parameter_reference.md#EKF2_POS_LOCK) can be enabled to force constant position fusion to run while landed and the global horizontal position has already been initialized.
+
+:::note
+`EKF2_POS_LOCK` has no effect in flight.
+:::
 
 ### 测距仪
 
@@ -456,7 +470,7 @@ PX4 允许您持续融合测距仪作为高度源（在任何飞行模式/载具
   如果检查失败，测距仪数据将被拒绝，高度将根据加速度计和其他选定的高度源（GNSS、气压计、视觉，如果启用且可用）进行估计。
   如果距离传感器是活动的高度数据源，在数据不一致持续 5 秒后，估计器会重置高度状态以匹配当前的距离传感器数据。
   如果一个或多个其他高度源处于活动状态，则测距仪被声明为故障，估计器继续使用其他传感器估计其高度。
-  测量值也可能再次变得一致，例如，如果载具下降，或者如果估计的高度漂移以匹配测量的测距仪高度。
+  测量结果也可能再次保持一致，例如当载具下降时，或者当估计高度漂移至与测距仪测得的高度相匹配时。
 
 :::
 
@@ -571,8 +585,8 @@ EKF2 默认启用（有关更多信息，请参阅 [切换状态估计器](../ad
 - ecl EKF 检测并报告传感器数据中统计上的显著不一致，协助诊断传感器错误。
 - 对于固定翼操作，ecl EKF 在有或没有空速传感器的情况下均可估计风速，并且能够在飞行中 GPS 丢失时结合空速测量和侧滑假设来使用估计的风速，以延长可用的航位推算时间。
 - ecl EKF 估计三轴加速度计零偏，这提高了尾座式飞机和其他在飞行阶段之间经历大姿态变化的载具的精度。
-- 联邦结构（组合姿态和位置/速度估计）意味着姿态估计受益于所有传感器测量。
-  如果调参正确，这应该提供改善态度估计的潜力。
+- 联合架构（结合姿态与位置/速度估计）意味着姿态估计能够利用所有传感器的测量数据。
+  若调参得当，这应能提升姿态估算的精度。
 
 ## 如何检查 EKF 性能？
 
@@ -594,7 +608,7 @@ EKF 输出、状态和状态数据发布到许多 uORB 主题，这些主题在�
 - 姿态输出数据位于 [VehicleAttitude](https://github.com/PX4/PX4-Autopilot/blob/main/msg/versioned/VehicleAttitude.msg) 消息中。
 - 局部位置输出数据位于 [VehicleLocalPosition](https://github.com/PX4/PX4-Autopilot/blob/main/msg/versioned/VehicleLocalPosition.msg) 消息中。
 - 全局 (WGS-84) 输出数据位于 [VehicleGlobalPosition](https://github.com/PX4/PX4-Autopilot/blob/main/msg/versioned/VehicleGlobalPosition.msg) 消息中。
-- 风速输出数据位于 [Wind.msg](https://github.com/PX4/PX4-Autopilot/blob/main/msg/Wind.msg) 消息中。
+- 风速输出数据位于 [AirspeedWind.msg](https://github.com/PX4/PX4-Autopilot/blob/main/msg/AirspeedWind.msg)消息中。
 
 ### 状态
 
@@ -610,7 +624,7 @@ states\[24\] 的索引映射如下：
 - \[19 ... 21\] 机体磁场 XYZ \(gauss\)
 - \[22 ... 23\] 风速 NE \(m/s\)
 
-### 状态方差
+### 状态变量
 
 参考 [EstimatorStates](https://github.com/PX4/PX4-Autopilot/blob/main/msg/EstimatorStates.msg) 中的 covariances\[24\]。
 covariances\[24\] 的索引映射如下：
@@ -630,7 +644,7 @@ covariances\[24\] 的索引映射如下：
 这些消息字段名称/类型相同（但单位不同）。
 
 :::info
-这些消息具有相同字段，是因为它们来自同一字段定义。
+这些消息具有相同的字段，因为它们是从相同的字段定义生成的。
 `# TOPICS` 行（见 [文件末尾](https://github.com/PX4/PX4-Autopilot/blob/main/msg/EstimatorInnovations.msg)）列出了要生成的消息名：
 
 ```
@@ -730,12 +744,12 @@ EKF 在开始 GPS 辅助前会执行一系列 GPS 质量检查。
 这些检查由 [EKF2_GPS_CHECK](../advanced_config/parameter_reference.md#EKF2_GPS_CHECK) 和 `EKF2_REQ_*` 参数控制。
 这些检查的通过/失败状态记录在 [EstimatorStatus](https://github.com/PX4/PX4-Autopilot/blob/main/msg/EstimatorStatus.msg) 的 `gps_check_fail_flags` 字段中。
 当所有所需的 GPS 检查通过后，此整数将为零。
-如果 EKF 未开始 GPS 对齐，请将该整数与 [EstimatorStatus](https://github.com/PX4/PX4-Autopilot/blob/main/msg/EstimatorStatus.msg) 中 `gps_check_fail_flags` 的位掩码定义进行对比。
+如果 EKF 未启动 GPS 对齐，请将该整数与 [EstimatorStatus](https://github.com/PX4/PX4-Autopilot/blob/main/msg/EstimatorStatus.msg) 中 `gps_check_fail_flags` 的位掩码定义进行对比。
 
 ### EKF 数值误差
 
 EKF 对其所有计算使用单精度浮点运算，并使用一阶近似来推导协方差预测和更新方程，以降低处理要求。
-这意味着，当重新调整 EKF 时，可能遇到协方差矩阵运算条件恶劣，足以导致状态估计中的发散或显著错误的情况。
+这意味着，当重新调整 EKF 时，可能遇到协方差矩阵运算条件恶化到足以导致发散或状态估计出现重大误差的情况。
 
 为防止这种情况，每个协方差和状态更新步骤都包含以下错误检测和更正步骤：
 
@@ -763,7 +777,7 @@ EKF 对其所有计算使用单精度浮点运算，并使用一阶近似来推�
 
 如果谐振频率与电动机或螺旋桨叶片通过频率一致，则隔离安装件会使振动更严重。
 
-可通过以下参数调整提高 EKF 对振动引起的高度发散的鲁棒性：
+通过调整以下参数，可增强 EKF 对振动诱发高度发散的抗扰性：
 
 - 将主高度传感器的创新门限加倍。
   若使用气压高度，可调 [EKF2_BARO_GATE](../advanced_config/parameter_reference.md#EKF2_BARO_GATE)。
@@ -896,3 +910,4 @@ GPS 数据丢失会表现为速度与位置创新测试比值“贴平(flat-lini
 ## 更多信息
 
 - [PX4 State Estimation Overview](https://youtu.be/HkYRJJoyBwQ)，_PX4 Developer Summit 2019_，Dr. Paul Riseborough：估计器概览、2018/19 的主要变化，以及 2019/20 期间的预期改进。
+- [Fuse, Reset, or Reject? EKF2中处理多种数据源](https://www.youtube.com/watch?v=CMGQJNPiTJg) - _PX4开发者峰会2025_，Marco Hauswirth，Auterion AG

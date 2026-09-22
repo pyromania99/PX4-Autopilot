@@ -13,20 +13,20 @@ The request is sent regularly, even while armed, so that the FMU always knows th
 The reply will include the published request_id, allowing correlation of all arming check information for a particular request.
 The reply will also include the registration_id for each external component, provided to it during the registration process (RegisterExtComponentReply).
 
-**TOPICS:** arming_checkrequestv0
+**TOPICS:** arming_check_request_v0
 
 ## Fields
 
-| Назва                           | Тип      | Unit [Frame] | Range/Enum | Опис                                                                                                              |
-| ------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| timestamp                       | `uint64` | us                                                               |            | Time since system start.                                                                          |
-| request_id | `uint8`  |                                                                  |            | Id of this request. Allows correlation with associated ArmingCheckReply messages. |
+| Назва                                                      | Тип      | Unit [Frame] | Range/Enum | Опис                                                                                                              |
+| ---------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                        | `uint64` | us                                                               |            | Time since system start.                                                                          |
+| <a id="fld_request_id"></a>request_id | `uint8`  |                                                                  |            | Id of this request. Allows correlation with associated ArmingCheckReply messages. |
 
 ## Constants
 
-| Назва                                                                | Тип      | Значення | Опис |
-| -------------------------------------------------------------------- | -------- | -------- | ---- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
+| Назва                                                              | Тип      | Значення | Опис |
+| ------------------------------------------------------------------ | -------- | -------- | ---- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
 
 ## Source Message
 

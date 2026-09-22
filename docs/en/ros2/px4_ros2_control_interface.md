@@ -17,7 +17,7 @@ The [PX4 ROS 2 Interface Library](../ros2/px4_ros2_interface_lib.md) is a C++ li
 
 Developers use the library to create and dynamically register modes written using ROS 2.
 These modes are dynamically registered with PX4, and appear to be part of PX4 to a ground station or other external system.
-They can even replace the default modes in PX4 with enhanced ROS 2 versions, falling back to the original version if the ROS2 mode fails.
+They can even replace the default modes in PX4 with enhanced ROS 2 versions, falling back to the original version if the ROS 2 mode fails.
 
 The library also provides classes for sending different types of setpoints, ranging from high-level navigation tasks all the way down to direct actuator controls.
 These classes abstract the internal setpoints used by PX4, and that can therefore be used to provide a consistent ROS 2 interface for future PX4 and ROS releases.
@@ -35,7 +35,7 @@ You are welcome to add and contribute missing classes.
 
 This diagram provides a conceptual overview of how the control interface modes and mode executors interact with PX4.
 
-![ROS2 modes overview diagram](../../assets/middleware/ros2/px4_ros2_interface_lib/ros2_modes_overview.svg)
+![ROS 2 modes overview diagram](../../assets/middleware/ros2/px4_ros2_interface_lib/ros2_modes_overview.svg)
 
 <!-- Source: https://docs.google.com/drawings/d/1WByCfgcytnaow7r41VhYJL8OGrw1RjFO51GoPMQBCNA/edit -->
 
@@ -347,7 +347,7 @@ The used types also define the compatibility with different vehicle types.
 The following sections provide a list of supported setpoint types:
 
 - [MulticopterGotoSetpointType](#go-to-setpoint-multicoptergotosetpointtype): <Badge type="warning" text="MC only" /> Smooth position and (optionally) heading control
-- [FwLateralLongitudinalSetpointType](#fixed-wing-lateral-and-longitudinal-setpoint-fwlaterallongitudinalsetpointtype): <Badge type="warning" text="FW only" /> <Badge type="tip" text="PX4 v1.17" /> Direct control of lateral and longitudinal fixed wing dynamics
+- [FwLateralLongitudinalSetpointType](#fw-lateral-longitudinal-setpoint): <Badge type="warning" text="FW only" /> <Badge type="tip" text="PX4 v1.17" /> Direct control of lateral and longitudinal fixed wing dynamics
 - [DirectActuatorsSetpointType](#direct-actuator-control-setpoint-directactuatorssetpointtype): Direct control of motors and flight surface servo setpoints
 - [Rover Setpoints](#rover-setpoints): <Badge type="tip" text="PX4 v1.17" /> Direct access to rover control setpoints (Position, Speed, Attitude, Rate, Throttle and Steering).
 
@@ -414,7 +414,7 @@ _goto_setpoint->update(
   max_heading_rate_rad_s);
 ```
 
-#### Fixed-Wing Lateral and Longitudinal Setpoint (FwLateralLongitudinalSetpointType)
+#### Fixed-Wing Lateral and Longitudinal Setpoint (FwLateralLongitudinalSetpointType) {#fw-lateral-longitudinal-setpoint}
 
 <Badge type="warning" text="Fixed wing only" /> <Badge type="tip" text="PX4 v1.17" />
 
@@ -597,7 +597,7 @@ An example for a rover specific drive mode using the `RoverSpeedAttitudeSetpoint
 To control a VTOL in an external flight mode, ensure you're returning the correct setpoint type based on the current flight configuration:
 
 - Multicopter mode: use a setpoint type that is compatible with multicopter control. For example: either the [`MulticopterGotoSetpointType`](#go-to-setpoint-multicoptergotosetpointtype) or the [`TrajectorySetpointType`](https://auterion.github.io/px4-ros2-interface-lib/classpx4__ros2_1_1TrajectorySetpointType.html).
-- Fixed-wing mode: Use the [`FwLateralLongitudinalSetpointType`](#fixed-wing-lateral-and-longitudinal-setpoint-fwlaterallongitudinalsetpointtype).
+- Fixed-wing mode: Use the [`FwLateralLongitudinalSetpointType`](#fw-lateral-longitudinal-setpoint).
 
 As long as the VTOL remains in either multicopter or fixed-wing mode throughout the external mode, no additional handling is required.
 

@@ -17,6 +17,7 @@ Testing/
 Packages/*
 build/*
 build_*/
+/docker-context/
 cscope.out
 cscope.in.out
 cscope.po.out
@@ -112,3 +113,10 @@ keys/
 
 # metadata
 _emscripten_sdk/
+
+# virtual Python environment
+.venv
+
+# Claude Code local settings and worktrees
+.claude/settings.local.json
+/.claude/worktrees/

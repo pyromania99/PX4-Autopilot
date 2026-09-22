@@ -20,8 +20,11 @@ PX4 приймає вхідний сигнал і маршрутизує/пер�
 Після вибору режиму введення перезавантажте транспортний засіб, щоб запустити драйвер кріплення.
 
 Ви повинні встановити `MNT_MODE_IN` одним із наступних: `RC (1)`, `Протокол гімбала MAVLink v2 (4)` або `Авто (0)` (інші варіанти застарілі).
-Якщо ви виберете `Авто (0)`, гімбал автоматично вибере вхід RC або MAVLink відповідно до останнього введення.
+If you select `Auto (0)`, the gimbal will automatically select either RC or MAVLink input based on the latest input.
 Зверніть увагу, що для автоматичного перемикання з MAVLink на RC потрібен великий рух ручкою!
+
+To hold a fixed attitude that the pilot cannot control (e.g. for RF/Satellite receiver stabilization), set `MNT_MODE_IN` to `Fixed attitude (5)`.
+See [Fixed Attitude Gimbal](#fixed-attitude-gimbal) below.
 
 Вихід налаштовується за допомогою параметра [MNT_MODE_OUT](../advanced_config/parameter_reference.md#MNT_MODE_OUT).
 Усталеним налаштування виходу PXM є (`AUX (0)`).
@@ -76,6 +79,20 @@ Gimbal також можна контролювати шляхом підклю�
 
 The PWM values to use for the disarmed, maximum, center and minimum values can be determined in the same way as other servo, using the [Actuator Test sliders](../config/actuators.md#actuator-testing) to confirm that each slider moves the appropriate axis, and changing the values so that the gimbal is in the appropriate position at the disarmed, low, center and high position in the slider.
 Значення також можуть бути наведені у документації гімбала.
+
+## Fixed Attitude Gimbal
+
+A fixed-attitude gimbal holds a constant world-frame attitude and cannot be controlled by the pilot.
+This is useful for stabilizing a payload that must keep pointing in a fixed direction regardless of vehicle motion, such as an RF or satellite receiver antenna.
+
+To enable it, set [MNT_MODE_IN](../advanced_config/parameter_reference.md#MNT_MODE_IN) to `Fixed attitude (5)` and reboot.
+In this mode no RC or MAVLink input is created, so the attitude cannot be commanded from a transmitter or ground station.
+
+The gimbal holds roll and yaw level (roll at 0, yaw at north), and pitch at the angle set in [MNT_FIXED_PITCH](../advanced_config/parameter_reference.md#MNT_FIXED_PITCH) (in degrees, world frame).
+
+Because the setpoint is in the world frame, stabilization against vehicle motion must be enabled with [MNT_DO_STAB](../advanced_config/parameter_reference.md#MNT_DO_STAB):
+
+- Set `MNT_DO_STAB` to `Stabilize all axis (1)` for the typical servo (AUX) gimbal.
 
 ## Gimbal Control in Missions
 

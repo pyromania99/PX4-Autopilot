@@ -8,18 +8,18 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 参数名       | 类型            | Unit [Frame] | Range/Enum | 描述                                                        |
-| --------- | ------------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp | `uint64`      |                                                                  |            | time since system start (microseconds) |
-| noutputs  | `uint32`      |                                                                  |            | valid outputs                                             |
-| output    | `float32[16]` |                                                                  |            | output data, in natural output units                      |
+| 参数名                                 | 类型            | Unit [Frame] | Range/Enum | 描述                                                        |
+| ----------------------------------- | ------------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64`      |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_noutputs"></a>noutputs   | `uint32`      |                                                                  |            | valid outputs                                             |
+| <a id="fld_output"></a>output       | `float32[16]` |                                                                  |            | output data, in natural output units                      |
 
 ## Constants
 
-| 参数名                                                                                                                                   | 类型      | 值  | 描述                  |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------- | -- | ------------------- |
-| <a href="#NUM_ACTUATOR_OUTPUTS"></a> NUM_ACTUATOR_OUTPUTS                                   | `uint8` | 16 |                     |
-| <a href="#NUM_ACTUATOR_OUTPUT_GROUPS	"></a> NUM_ACTUATOR_OUTPUT_GROUPS | `uint8` | 4  | for sanity checking |
+| 参数名                                                                                                                                | 类型      | 值  | 描述                  |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------- | -- | ------------------- |
+| <a id="#NUM_ACTUATOR_OUTPUTS"></a> NUM_ACTUATOR_OUTPUTS                                  | `uint8` | 16 |                     |
+| <a id="#NUM_ACTUATOR_OUTPUT_GROUPS"></a> NUM_ACTUATOR_OUTPUT_GROUPS | `uint8` | 4  | for sanity checking |
 
 ## Source Message
 

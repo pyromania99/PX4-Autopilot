@@ -4,16 +4,16 @@ pageClass: is-wide-page
 
 # OpenDroneIdOperatorId (UORB message)
 
-**TOPICS:** open_droneid_operatorid
+**TOPICS:** open_drone_id_operator_id
 
 ## Fields
 
-| Назва                                                      | Тип         | Unit [Frame] | Range/Enum | Опис |
-| ---------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | ---- |
-| timestamp                                                  | `uint64`    |                                                                  |            |      |
-| id_or_mac        | `uint8[20]` |                                                                  |            |      |
-| operator_id_type | `uint8`     |                                                                  |            |      |
-| operator_id                           | `char[20]`  |                                                                  |            |      |
+| Назва                                                                                       | Тип         | Unit [Frame] | Range/Enum | Опис |
+| ------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | ---- |
+| <a id="fld_timestamp"></a>timestamp                                                         | `uint64`    |                                                                  |            |      |
+| <a id="fld_id_or_mac"></a>id_or_mac               | `uint8[20]` |                                                                  |            |      |
+| <a id="fld_operator_id_type"></a>operator_id_type | `uint8`     |                                                                  |            |      |
+| <a id="fld_operator_id"></a>operator_id                                | `char[20]`  |                                                                  |            |      |
 
 ## Source Message
 

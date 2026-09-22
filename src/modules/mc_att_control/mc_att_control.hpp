@@ -139,6 +139,10 @@ private:
 		(ParamFloat<px4::params::MC_PITCHRATE_MAX>) _param_mc_pitchrate_max,
 		(ParamFloat<px4::params::MC_YAWRATE_MAX>)   _param_mc_yawrate_max,
 
+		(ParamFloat<px4::params::MC_REF_W_N>)        _param_mc_ref_w_n,
+		(ParamFloat<px4::params::MC_REF_FF>)         _param_mc_ref_ff,
+		(ParamFloat<px4::params::MC_REF_FF_MAX>)     _param_mc_ref_ff_max,
+
 		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time
 	)
 };

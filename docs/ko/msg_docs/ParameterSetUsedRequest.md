@@ -6,20 +6,20 @@ pageClass: is-wide-page
 
 ParameterSetUsedRequest : Used by a remote to update the used flag for a parameter on the primary.
 
-**TOPICS:** parameter_setused_request
+**TOPICS:** parameter_set_used_request
 
 ## Fields
 
-| 명칭                                   | 형식       | Unit [Frame] | Range/Enum | 설명 |
-| ------------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | -- |
-| timestamp                            | `uint64` |                                                                  |            |    |
-| parameter_index | `uint16` |                                                                  |            |    |
+| 명칭                                                                   | 형식       | Unit [Frame] | Range/Enum | 설명 |
+| -------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | -- |
+| <a id="fld_timestamp"></a>timestamp                                  | `uint64` |                                                                  |            |    |
+| <a id="fld_parameter_index"></a>parameter_index | `uint16` |                                                                  |            |    |
 
 ## Constants
 
-| 명칭                                                                                          | 형식      | Value | 설명 |
-| ------------------------------------------------------------------------------------------- | ------- | ----- | -- |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 64    |    |
+| 명칭                                                                                        | 형식      | Value | 설명 |
+| ----------------------------------------------------------------------------------------- | ------- | ----- | -- |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 64    |    |
 
 ## Source Message
 

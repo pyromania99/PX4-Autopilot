@@ -4,15 +4,15 @@ pageClass: is-wide-page
 
 # OpenDroneIdArmStatus (UORB message)
 
-**TOPICS:** open_droneid_armstatus
+**TOPICS:** open_drone_id_arm_status
 
 ## Fields
 
-| 参数名       | 类型         | Unit [Frame] | Range/Enum | 描述 |
-| --------- | ---------- | ---------------------------------------------------------------- | ---------- | -- |
-| timestamp | `uint64`   |                                                                  |            |    |
-| status    | `uint8`    |                                                                  |            |    |
-| error     | `char[50]` |                                                                  |            |    |
+| 参数名                                 | 类型         | Unit [Frame] | Range/Enum | 描述 |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | -- |
+| <a id="fld_timestamp"></a>timestamp | `uint64`   |                                                                  |            |    |
+| <a id="fld_status"></a>status       | `uint8`    |                                                                  |            |    |
+| <a id="fld_error"></a>error         | `char[50]` |                                                                  |            |    |
 
 ## Source Message
 

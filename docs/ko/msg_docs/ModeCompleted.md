@@ -10,19 +10,19 @@ Mode completion result, published by an active mode. The possible values of nav_
 
 ## Fields
 
-| 명칭                             | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
-| ------------------------------ | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
-| result                         | `uint8`  |                                                                  |            | One of RESULT\_\*                   |
-| nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
+| 명칭                                                       | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_result"></a>result                            | `uint8`  |                                                                  |            | One of RESULT\_\*                   |
+| <a id="fld_nav_state"></a>nav_state | `uint8`  |                                                                  |            | Source mode (values in VehicleStatus)  |
 
 ## Constants
 
-| 명칭                                                                                                  | 형식       | Value | 설명                                             |
-| --------------------------------------------------------------------------------------------------- | -------- | ----- | ---------------------------------------------- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                | `uint32` | 0     |                                                |
-| <a href="#RESULT_SUCCESS"></a> RESULT_SUCCESS                                  | `uint8`  | 0     |                                                |
-| <a href="#RESULT_FAILURE_OTHER"></a> RESULT_FAILURE_OTHER | `uint8`  | 100   | Mode failed (generic error) |
+| 명칭                                                                                                | 형식       | Value | 설명                                             |
+| ------------------------------------------------------------------------------------------------- | -------- | ----- | ---------------------------------------------- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                | `uint32` | 0     |                                                |
+| <a id="#RESULT_SUCCESS"></a> RESULT_SUCCESS                                  | `uint8`  | 0     |                                                |
+| <a id="#RESULT_FAILURE_OTHER"></a> RESULT_FAILURE_OTHER | `uint8`  | 100   | Mode failed (generic error) |
 
 ## Source Message
 

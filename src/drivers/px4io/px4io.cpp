@@ -45,7 +45,7 @@
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
 #include <px4_platform_common/sem.hpp>
 
-#include <crc32.h>
+#include <nuttx/crc32.h>
 
 #include <drivers/device/device.h>
 #include <drivers/drv_hrt.h>
@@ -155,8 +155,7 @@ public:
 
 	uint16_t		system_status() const { return _status; }
 
-	bool updateOutputs(uint16_t outputs[MAX_ACTUATORS], unsigned num_outputs,
-			   unsigned num_control_groups_updated) override;
+	bool updateOutputs(float outputs[MAX_ACTUATORS], unsigned num_outputs, unsigned num_control_groups_updated) override;
 
 private:
 	void Run() override;
@@ -364,19 +363,22 @@ PX4IO::~PX4IO()
 	perf_free(_interface_write_perf);
 }
 
-bool PX4IO::updateOutputs(uint16_t outputs[MAX_ACTUATORS],
-			  unsigned num_outputs, unsigned num_control_groups_updated)
+bool PX4IO::updateOutputs(float outputs[MAX_ACTUATORS], unsigned num_outputs, unsigned num_control_groups_updated)
 {
+	uint16_t hw_outputs[MAX_ACTUATORS] {};
+
 	for (size_t i = 0; i < num_outputs; i++) {
 		if (!_mixing_output.isFunctionSet(i)) {
 			// do not run any signal on disabled channels
 			outputs[i] = 0;
 		}
+
+		hw_outputs[i] = static_cast<uint16_t>(lroundf(outputs[i]));
 	}
 
 	if (!_test_fmu_fail) {
 		/* output to the servos */
-		io_reg_set(PX4IO_PAGE_DIRECT_PWM, 0, outputs, num_outputs);
+		io_reg_set(PX4IO_PAGE_DIRECT_PWM, 0, hw_outputs, num_outputs);
 	}
 
 	return true;
@@ -504,7 +506,7 @@ void PX4IO::updateFailsafe()
 	uint16_t values[PX4IO_MAX_ACTUATORS] {};
 
 	for (unsigned i = 0; i < _max_actuators; i++) {
-		values[i] = _mixing_output.actualFailsafeValue(i);
+		values[i] = static_cast<uint16_t>(lroundf(_mixing_output.actualFailsafeValue(i)));
 	}
 
 	io_reg_set(PX4IO_PAGE_FAILSAFE_PWM, 0, values, _max_actuators);
@@ -1737,7 +1739,15 @@ int PX4IO::print_usage(const char *reason)
 	PRINT_MODULE_DESCRIPTION(
 		R"DESCR_STR(
 ### Description
+
 Output driver communicating with the IO co-processor.
+
+On its RC input, the IO co-processor supports:
+- PPM (CPPM)
+- S.BUS and S.BUS2
+- Spektrum DSM / DSM2 / DSM-X (10-bit and 11-bit)
+- Yuneec ST24
+- Graupner SUMD
 )DESCR_STR");
 
 	PRINT_MODULE_USAGE_NAME("px4io", "driver");

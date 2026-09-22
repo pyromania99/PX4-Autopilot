@@ -40,8 +40,9 @@ ControlLevel resolveLevel(const vehicle_control_mode_s &vcm, uint8_t vehicle_typ
 			  bool in_transition, bool is_tailsitter)
 {
 	// Nothing to do when control is disabled entirely. Mirrors the inverse of
-	// mc_rate_control's run condition (MulticopterRateControl.cpp:179).
-	if (vcm.flag_control_termination_enabled || !vcm.flag_control_rates_enabled) {
+	// mc_rate_control's run condition, which is now flag_control_rates_enabled alone:
+	// flag_control_termination_enabled was removed upstream as unused (5d2cec97f1).
+	if (!vcm.flag_control_rates_enabled) {
 		return ControlLevel::None;
 	}
 

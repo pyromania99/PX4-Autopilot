@@ -499,7 +499,7 @@ void MulticopterController::publishOutput(const mc_ctrl::ControllerOutput &outpu
 	// and publication (MulticopterRateControl.cpp:213). MC_YAW_TQ_CUTOFF <= 0 leaves the
 	// filter's time constant at zero, which makes update() a pass-through, so the parameter
 	// still means "off" exactly as it does in stock.
-	torque_setpoint.xyz[2] = _output_lpf_yaw.update(torque_setpoint.xyz[2], dt);
+	torque_setpoint.xyz[2] = _output_lpf_yaw.update(torque_setpoint.xyz[2], static_cast<uint64_t>(dt * 1e6f));
 
 	// Battery scaling (MulticopterRateControl.cpp:243-258).
 	if (_param_mc_bat_scale_en.get()) {

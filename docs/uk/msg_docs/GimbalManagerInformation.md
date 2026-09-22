@@ -4,40 +4,40 @@ pageClass: is-wide-page
 
 # GimbalManagerInformation (повідомлення UORB)
 
-**TOPICS:** gimbal_managerinformation
+**TOPICS:** gimbal_manager_information
 
 ## Fields
 
-| Назва                                                      | Тип       | Unit [Frame] | Range/Enum | Опис                                                      |
-| ---------------------------------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                                                  | `uint64`  |                                                                  |            | time since system start (microseconds) |
-| cap_flags                             | `uint32`  |                                                                  |            |                                                           |
-| gimbal_device_id | `uint8`   |                                                                  |            |                                                           |
-| roll_min                              | `float32` | rad                                                              |            |                                                           |
-| roll_max                              | `float32` | rad                                                              |            |                                                           |
-| pitch_min                             | `float32` | rad                                                              |            |                                                           |
-| pitch_max                             | `float32` | rad                                                              |            |                                                           |
-| yaw_min                               | `float32` | rad                                                              |            |                                                           |
-| yaw_max                               | `float32` | rad                                                              |            |                                                           |
+| Назва                                                                                       | Тип       | Unit [Frame] | Range/Enum | Опис                                                      |
+| ------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                         | `uint64`  |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_cap_flags"></a>cap_flags                                    | `uint32`  |                                                                  |            |                                                           |
+| <a id="fld_gimbal_device_id"></a>gimbal_device_id | `uint8`   |                                                                  |            |                                                           |
+| <a id="fld_roll_min"></a>roll_min                                      | `float32` | rad                                                              |            |                                                           |
+| <a id="fld_roll_max"></a>roll_max                                      | `float32` | rad                                                              |            |                                                           |
+| <a id="fld_pitch_min"></a>pitch_min                                    | `float32` | rad                                                              |            |                                                           |
+| <a id="fld_pitch_max"></a>pitch_max                                    | `float32` | rad                                                              |            |                                                           |
+| <a id="fld_yaw_min"></a>yaw_min                                        | `float32` | rad                                                              |            |                                                           |
+| <a id="fld_yaw_max"></a>yaw_max                                        | `float32` | rad                                                              |            |                                                           |
 
 ## Constants
 
-| Назва                                                                                                                                                                                                                                                                    | Тип      | Значення | Опис |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | -------- | ---- |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_RETRACT"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_RETRACT                                                                       | `uint32` | 1        |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_NEUTRAL"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_NEUTRAL                                                                       | `uint32` | 2        |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_AXIS                                              | `uint32` | 4        |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_FOLLOW                                          | `uint32` | 8        |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_LOCK                                              | `uint32` | 16       |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_AXIS                                            | `uint32` | 32       |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_FOLLOW                                        | `uint32` | 64       |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_LOCK                                            | `uint32` | 128      |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_AXIS                                                | `uint32` | 256      |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_FOLLOW                                            | `uint32` | 512      |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_LOCK                                                | `uint32` | 1024     |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_SUPPORTS_INFINITE_YAW"></a> GIMBAL_MANAGER_CAP_FLAGS_SUPPORTS_INFINITE_YAW                              | `uint32` | 2048     |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_LOCAL"></a> GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_LOCAL   | `uint32` | 65536    |      |
-| <a href="#GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_GLOBAL"></a> GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_GLOBAL | `uint32` | 131072   |      |
+| Назва                                                                                                                                                                                                                                                                  | Тип      | Значення | Опис |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------- | ---- |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_RETRACT"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_RETRACT                                                                       | `uint32` | 1        |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_NEUTRAL"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_NEUTRAL                                                                       | `uint32` | 2        |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_AXIS                                              | `uint32` | 4        |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_FOLLOW                                          | `uint32` | 8        |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_ROLL_LOCK                                              | `uint32` | 16       |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_AXIS                                            | `uint32` | 32       |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_FOLLOW                                        | `uint32` | 64       |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_PITCH_LOCK                                            | `uint32` | 128      |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_AXIS"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_AXIS                                                | `uint32` | 256      |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_FOLLOW"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_FOLLOW                                            | `uint32` | 512      |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_LOCK"></a> GIMBAL_MANAGER_CAP_FLAGS_HAS_YAW_LOCK                                                | `uint32` | 1024     |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_SUPPORTS_INFINITE_YAW"></a> GIMBAL_MANAGER_CAP_FLAGS_SUPPORTS_INFINITE_YAW                              | `uint32` | 2048     |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_LOCAL"></a> GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_LOCAL   | `uint32` | 65536    |      |
+| <a id="#GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_GLOBAL"></a> GIMBAL_MANAGER_CAP_FLAGS_CAN_POINT_LOCATION_GLOBAL | `uint32` | 131072   |      |
 
 ## Source Message
 

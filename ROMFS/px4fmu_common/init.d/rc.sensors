@@ -16,7 +16,7 @@ fi
 # Start batmon driver if enabled using BATMON_DRIVER_EN
 if param compare -s BATMON_DRIVER_EN 1
 then
-	batmon start -X  #start on external bus
+	batmon start -X # start on external bus
 fi
 
 # Sensors on the PWM interface bank
@@ -191,6 +191,12 @@ then
 	auav start -A -X
 fi
 
+# DLVR differential pressure sensor external I2C
+if param greater -s SENS_EN_DLVR 0
+then
+	dlvr start -X
+fi
+
 # SHT3x temperature and hygrometer sensor, external I2C
 if param compare -s SENS_EN_SHT3X 1
 then
@@ -238,7 +244,7 @@ then
 fi
 
 # Start TMP102 temperature sensor
-if param compare SENS_EN_TMP102 1
+if param compare -s SENS_EN_TMP102 1
 then
 	tmp102 start -X
 fi

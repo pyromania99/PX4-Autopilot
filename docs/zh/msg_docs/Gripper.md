@@ -10,17 +10,17 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 参数名       | 类型       | Unit [Frame] | Range/Enum | 描述                              |
-| --------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
-| timestamp | `uint64` |                                                                  |            |                                 |
-| command   | `int8`   |                                                                  |            | Commanded state for the gripper |
+| 参数名                                 | 类型       | Unit [Frame] | Range/Enum | 描述                              |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` |                                                                  |            |                                 |
+| <a id="fld_command"></a>command     | `int8`   |                                                                  |            | Commanded state for the gripper |
 
 ## Constants
 
-| 参数名                                                                  | 类型     | 值 | 描述 |
-| -------------------------------------------------------------------- | ------ | - | -- |
-| <a href="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0 |    |
-| <a href="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1 |    |
+| 参数名                                                                | 类型     | 值 | 描述 |
+| ------------------------------------------------------------------ | ------ | - | -- |
+| <a id="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0 |    |
+| <a id="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1 |    |
 
 ## Source Message
 

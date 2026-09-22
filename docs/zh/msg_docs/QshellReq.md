@@ -8,18 +8,18 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 参数名                                   | 类型          | Unit [Frame] | Range/Enum | 描述                                                        |
-| ------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                             | `uint64`    |                                                                  |            | time since system start (microseconds) |
-| cmd                                   | `char[100]` |                                                                  |            |                                                           |
-| strlen                                | `uint32`    |                                                                  |            |                                                           |
-| request_sequence | `uint32`    |                                                                  |            |                                                           |
+| 参数名                                                                    | 类型          | Unit [Frame] | Range/Enum | 描述                                                        |
+| ---------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`    |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_cmd"></a>cmd                                                | `char[100]` |                                                                  |            |                                                           |
+| <a id="fld_strlen"></a>strlen                                          | `uint32`    |                                                                  |            |                                                           |
+| <a id="fld_request_sequence"></a>request_sequence | `uint32`    |                                                                  |            |                                                           |
 
 ## Constants
 
-| 参数名                                                        | 类型       | 值   | 描述 |
-| ---------------------------------------------------------- | -------- | --- | -- |
-| <a href="#MAX_STRLEN"></a> MAX_STRLEN | `uint32` | 100 |    |
+| 参数名                                                      | 类型       | 值   | 描述 |
+| -------------------------------------------------------- | -------- | --- | -- |
+| <a id="#MAX_STRLEN"></a> MAX_STRLEN | `uint32` | 100 |    |
 
 ## Source Message
 

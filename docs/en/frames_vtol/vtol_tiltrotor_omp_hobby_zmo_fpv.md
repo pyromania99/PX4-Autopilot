@@ -79,7 +79,7 @@ The following tools were used for this build.
 ### Preparations
 
 Remove the original flight controller, ESC and wing connector cables.
-Also remove the the propellers.
+Also remove the propellers.
 This will help you with the handling of the vehicle and will reduce the risk of an injury due to an unintentional motor startup.
 
 ZMO FPV in it's original state.
@@ -97,7 +97,7 @@ Flight controller and wing connectors removed from the vehicle.
 1. Unsolder the 3 female banana plug connectors of the rear motor (might not be necessary for the Pixhawk 6 integration).
 1. Screw the ESC back in place with 4 M2.5 x 12 screws.
 1. Shorten the rear motor wires and solder them as shown in the picture into place.
-1. Solder signal and GND wires to the PWM input ot the ESC.
+1. Solder signal and GND wires to the PWM input to the ESC.
 
    ![ESC 01](../../assets/airframes/vtol/omp_hobby_zmo_fpv/esc-01.jpg)
 
@@ -308,7 +308,7 @@ Then calibrate the main sensors:
 [Calibrate your RC Controller](../config/radio.md) and setup the [flight mode switches](../config/flight_mode.md).
 
 We recommend you assign RC switches for the set of modes defined in [Flight Mode Configuration > What Flight Modes and Switches Should I Set?](../config/flight_mode.md#what-flight-modes-and-switches-should-i-set).
-In particular you should assign a _VTOL Transition Switch_, _Kill Switch_, and a switch to select [Stabilized mode](../flight_modes_fw/stabilized.md) and [Position mode](../flight_modes_fw/position.md).
+In particular you should assign a _VTOL Transition Switch_, _Kill Switch_, and a switch to select [Stabilized mode](../flight_modes_fw/stabilized.md) and [Cruise mode](../flight_modes_fw/cruise.md).
 
 ### Actuator Setup
 
@@ -380,5 +380,5 @@ The direction can't be changed in software because the vehicle does not use [DSh
 - If a [kill-switch](../config/safety.md#kill-switch) is used, make sure it's working properly and will not be activated accidentally in flight!
 - Arm in [Stabilized mode](../flight_modes_fw/stabilized.md) and check if motors respond to the commands, e.g. roll left increases throttle on the right motor
 - Takeoff in [Stabilized mode](../flight_modes_fw/stabilized.md) and make some basic maneuvers
-- If everything went without any issue, takeoff in [Position mode](../flight_modes_fw/position.md) and do a transition at around 50m.
+- If everything went without any issue, takeoff in [Cruise mode](../flight_modes_fw/cruise.md) and do a transition at around 50m.
   If something goes wrong switch back to multicopter mode as fast as possible (using the transition switch).

@@ -62,6 +62,28 @@ static constexpr size_t   RTCM3_MAX_PAYLOAD_LEN = 1023;
 static constexpr size_t   RTCM3_MAX_FRAME_LEN   = RTCM3_HEADER_LEN + RTCM3_MAX_PAYLOAD_LEN + RTCM3_CRC_LEN; // 1029
 static constexpr uint32_t RTCM3_CRC24Q_POLY     = 0x1864CFB;
 
+// MAVLink GPS_RTCM_DATA fragmentation constants.
+// Spec: https://mavlink.io/en/messages/common.html#GPS_RTCM_DATA
+//
+// flags bit layout:
+//   bit 0:   fragmented flag
+//   bits 1-2: fragment ID
+//   bits 3-7: sequence ID
+//
+// Fragmented payloads must only be flushed once the complete buffer has been
+// reconstructed. A buffer is complete once either all 4 fragments are present,
+// or the first fragment with a non-full payload has been received and every
+// lower fragment ID is present.
+static constexpr size_t   GPS_RTCM_MAX_FRAGMENT_LEN         = 180;
+static constexpr size_t   GPS_RTCM_MAX_FRAGMENTS            = 4;
+static constexpr size_t   GPS_RTCM_MAX_MESSAGE_LEN          = GPS_RTCM_MAX_FRAGMENT_LEN * GPS_RTCM_MAX_FRAGMENTS;
+static constexpr uint64_t GPS_RTCM_FRAGMENT_TIMEOUT_US      = 1000000;
+static constexpr uint8_t  GPS_RTCM_FLAG_FRAGMENTED          = 1 << 0;
+static constexpr uint8_t  GPS_RTCM_FLAG_FRAGMENT_ID_SHIFT   = 1;
+static constexpr uint8_t  GPS_RTCM_FLAG_FRAGMENT_ID_MASK    = 0x03;
+static constexpr uint8_t  GPS_RTCM_FLAG_SEQUENCE_ID_SHIFT   = 3;
+static constexpr uint8_t  GPS_RTCM_FLAG_SEQUENCE_ID_MASK    = 0x1f;
+
 /**
  * Calculate CRC-24Q checksum for RTCM3 messages.
  *
@@ -95,108 +117,112 @@ inline size_t rtcm3_payload_length(const uint8_t *frame)
 	return ((static_cast<size_t>(frame[1]) & 0x03) << 8) | frame[2];
 }
 
-/**
- * RTCM3 parser statistics.
- */
-struct Rtcm3ParserStats {
-	uint32_t messages_parsed;   ///< Messages successfully parsed and consumed
-	uint32_t crc_errors;        ///< Messages with CRC failures
-	uint32_t bytes_discarded;   ///< Bytes discarded while searching for valid frames
-	uint32_t total_frame_bytes; ///< Total bytes in successfully parsed frames
-};
+inline bool gps_rtcm_is_fragmented(uint8_t flags)
+{
+	return (flags & GPS_RTCM_FLAG_FRAGMENTED) != 0;
+}
 
-/**
- * RTCM3 frame parser for detecting message boundaries in a byte stream.
- *
- * This parser is designed for scenarios where RTCM data arrives in arbitrary
- * chunks (e.g., from uORB messages, serial ports) and needs to be reassembled
- * into complete, CRC-validated RTCM messages.
- *
- * Usage:
- *   Rtcm3Parser parser;
- *   parser.addData(chunk1, len1);
- *   parser.addData(chunk2, len2);
- *
- *   size_t frame_len;
- *   const uint8_t *frame;
- *   while ((frame = parser.getNextMessage(&frame_len)) != nullptr) {
- *       // Process complete RTCM message
- *       uint16_t msg_type = rtcm3_message_type(frame);
- *       // ... use the frame ...
- *       parser.consumeMessage(frame_len);
- *   }
- */
-class Rtcm3Parser
+inline uint8_t gps_rtcm_fragment_id(uint8_t flags)
+{
+	return (flags >> GPS_RTCM_FLAG_FRAGMENT_ID_SHIFT) & GPS_RTCM_FLAG_FRAGMENT_ID_MASK;
+}
+
+inline uint8_t gps_rtcm_sequence_id(uint8_t flags)
+{
+	return (flags >> GPS_RTCM_FLAG_SEQUENCE_ID_SHIFT) & GPS_RTCM_FLAG_SEQUENCE_ID_MASK;
+}
+
+class GpsRtcmMessageAssembler
 {
 public:
-	// Buffer size: enough for 2 max-size messages to handle overlap
-	static constexpr size_t BUFFER_SIZE = RTCM3_MAX_FRAME_LEN * 2;
-
-	Rtcm3Parser() = default;
+	GpsRtcmMessageAssembler() = default;
 
 	/**
-	 * Add data to the parser buffer.
+	 * Add a MAVLink GPS_RTCM_DATA packet.
 	 *
-	 * @param data Pointer to incoming data
-	 * @param len  Number of bytes to add
-	 * @return     Number of bytes actually added (may be less if buffer is full)
+	 * Fragmented packets are buffered until the autopilot can reconstruct the
+	 * complete payload. The fragment ID selects the slot within the 4-fragment
+	 * buffer, while the sequence ID prevents fragments from different buffers
+	 * from being mixed together. A fragmented payload is complete once either
+	 * all 4 fragments are present, or the first fragment with a non-full
+	 * payload has been received and every lower fragment ID is present. If the
+	 * RTCM payload length is an exact multiple of 180 bytes and uses fewer than
+	 * 4 fragments, the sender must still send a final zero-length fragment to
+	 * mark completion.
+	 *
+	 * As a compatibility fallback for older senders that omit
+	 * that terminator, PX4 also flushes a buffered message when a different
+	 * sequence ID arrives, but only if the buffered fragments are a gap-free
+	 * run of full 180-byte fragments starting at fragment 0 (the start of the
+	 * RTCM message). This fallback only works while the older sequence remains
+	 * buffered (up to the 1 second fragment timeout).
+	 *
+	 * If processing a packet completes two messages, addPacket() returns the older one
+	 * and queues the newer one for takeDeferredMessage(). The returned pointer
+	 * is valid until the next call to addPacket().
+	 *
+	 * @param flags       MAVLink GPS_RTCM_DATA flags
+	 * @param data        Packet payload
+	 * @param len         Packet payload length
+	 * @param timestamp   Packet arrival timestamp in microseconds
+	 * @param out_len     Set to the reassembled message length, or 0 if incomplete/invalid
+	 * @return            Pointer to a complete message, or nullptr if the message is incomplete or invalid
 	 */
-	size_t addData(const uint8_t *data, size_t len);
+	const uint8_t *addPacket(uint8_t flags, const uint8_t *data, size_t len, uint64_t timestamp, size_t &out_len);
 
 	/**
-	 * Get a pointer to the next complete RTCM3 message without consuming it.
+	 * Retrieve the single deferred message queued by addPacket().
 	 *
-	 * Returns a pointer directly into the parser's internal buffer where the
-	 * valid frame starts. Invalid bytes at the buffer start are discarded
-	 * during the search. The returned pointer remains valid until the next
-	 * call to addData() or consumeMessage().
+	 * This is only needed when processing one input packet completes two RTCM
+	 * messages, for example when a legacy exact-multiple sequence is flushed on
+	 * sequence rollover and the same packet also completes the new sequence.
 	 *
-	 * After processing the message, call consumeMessage() to remove it from
-	 * the buffer.
-	 *
-	 * @param out_len    Set to the total frame length
-	 * @return           Pointer to the frame in internal buffer, or nullptr
-	 *                   if no complete valid frame is available
+	 * @param out_len     Set to the queued message length, or 0 if none is queued
+	 * @return            Pointer to the queued message, or nullptr if none is queued
 	 */
-	const uint8_t *getNextMessage(size_t *out_len);
+	const uint8_t *takeDeferredMessage(size_t &out_len);
 
-	/**
-	 * Consume (remove) the next message from the buffer.
-	 *
-	 * Call this after successfully processing a message obtained via
-	 * getNextMessage(). The length should match what getNextMessage returned.
-	 *
-	 * @param len   Number of bytes to remove from the buffer
-	 */
-	void consumeMessage(size_t len);
-
-	/**
-	 * Get the number of bytes currently buffered.
-	 */
-	size_t bufferedBytes() const { return _buffer_len; }
-
-	/**
-	 * Get parser statistics.
-	 */
-	Rtcm3ParserStats getStats() const
-	{
-		return {_messages_parsed, _crc_errors, _bytes_discarded, _total_frame_bytes};
-	}
+	void reset();
 
 private:
+	struct FragmentSlot {
+		uint8_t data[GPS_RTCM_MAX_FRAGMENT_LEN] {};
+		size_t len {0};
+		bool present {false};
+	};
+
+	struct SequenceState {
+		uint8_t sequence_id {0};
+		int8_t last_fragment_id {-1};
+		uint64_t timestamp {0};
+		bool active {false};
+	};
+
+	void resetActiveState();
+	bool hasFragmentAfter(uint8_t fragment_id) const;
+
 	/**
-	 * Remove bytes from the beginning of the buffer.
+	 * Compatibility fallback for older QGroundControl builds that omit the
+	 * final zero-length fragment: assemble the buffered message only if the
+	 * buffered fragments are a gap-free run of full 180-byte fragments
+	 * starting at fragment 0.
+	 *
+	 * @param destination Buffer that receives the assembled message bytes
+	 * @return Length of the assembled message, or 0 if the fallback does not apply
+	 *
 	 */
-	void discardBytes(size_t count);
+	size_t assembleLegacyExactMultipleMessage(uint8_t *destination) const;
 
-	uint8_t  _buffer[BUFFER_SIZE] {};
-	size_t   _buffer_len {0};
+	bool isComplete() const;
+	size_t lastFragmentIndex() const;
 
-	// Statistics
-	uint32_t _messages_parsed {0};
-	uint32_t _crc_errors {0};
-	uint32_t _bytes_discarded {0};
-	uint32_t _total_frame_bytes {0};
+	FragmentSlot _fragments[GPS_RTCM_MAX_FRAGMENTS] {};
+	uint8_t _assembled_message[GPS_RTCM_MAX_MESSAGE_LEN] {};
+	uint8_t _deferred_message[GPS_RTCM_MAX_MESSAGE_LEN] {};
+	size_t _deferred_message_len {0};
+	bool _deferred_message_valid {false};
+	// State for the sequence that is currently being assembled.
+	SequenceState _active_sequence {};
 };
 
 } // namespace gnss

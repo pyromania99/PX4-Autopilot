@@ -14,7 +14,7 @@ Some RTK GNSS setups can provide yaw/heading information, as an alternative to t
 
 ## 지원되는 RTK 장치
 
-PX4 supports the [u-blox M8P](https://www.u-blox.com/en/product/neo-m8p), [u-blox F9P](https://www.u-blox.com/en/product/zed-f9p-module) and the [Trimble MB-Two](https://oemgnss.trimble.com/en/products/receiver-modules/mb-two) GPS, and products that incorporate them.
+PX4 supports the [u-blox M8P](https://www.u-blox.com/en/product/neo-m8p-series), [u-blox F9P](https://www.u-blox.com/en/product/zed-f9p-module) and the [Trimble MB-Two](https://oemgnss.trimble.com/en/products/receiver-modules/mb-two) GPS, and products that incorporate them.
 
 :::note
 일부 RTK 모듈은 특정 기능(베이스 또는 로버)으로만 사용할 수 있는 반면, 다른 모듈은 서로 교환하여 사용할 수 있습니다.
@@ -58,7 +58,7 @@ It also highlights devices that connect via the CAN bus, and those which support
 | [Septentrio AsteRx-m3 Pro](../gps_compass/septentrio_asterx-rib.md)                                                  |        AsteRx        |     ✓    |            |      [Septentrio Dual Antenna]      |  ✓  |
 | [Septentrio mosaic-go](../gps_compass/septentrio_mosaic-go.md)                                                       | mosaic X5 / mosaic H |     ✓    |            |      [Septentrio Dual Antenna]      |  ✓  |
 | [SIRIUS RTK GNSS ROVER (F9P)](https://store-drotek.com/911-sirius-rtk-gnss-rover-f9p.html)        |          F9P         |     ✓    |            |              [Dual F9P]             |     |
-| [SparkFun GPS-RTK2 Board - ZED-F9P](https://www.sparkfun.com/products/15136)                                         |          F9P         |     ✓    |            |              [Dual F9P]             |     |
+| [SparkFun GPS-RTK2 Board - ZED-F9P](https://www.sparkfun.com/sparkfun-gps-rtk2-board-zed-f9p-qwiic-gps-15136.html)   |          F9P         |     ✓    |            |              [Dual F9P]             |     |
 | [Trimble MB-Two](../gps_compass/rtk_gps_trimble_mb_two.md)                                                           |          F9P         |     ✓    |            |                  ✓                  |     |
 
 <!-- links used in above table -->
@@ -75,7 +75,7 @@ It also highlights devices that connect via the CAN bus, and those which support
 [mosaic-G5 P3H]: https://www.septentrio.com/en/products/gnss-receivers/gnss-receiver-modules/mosaic-G5-P3H
 [D10P]: https://docs.datagnss.com/gnss/gnss_module/D10P_RTK
 
-참고:
+Notes:
 
 - ✓ or a specific part number indicate that a features is supported, while ✘ or empty show that the feature is not supported.
   "?"는 "알 수 없음"을 나타냅니다.
@@ -175,7 +175,7 @@ The links in the table take you to the device-specific PX4 configuration.
 
 Generally when using a GNSS as a source of yaw information you will need to configure the following parameters:
 
-| 매개변수                               | 설정                                                                                                                                                          |
+| Parameter                          | 설정                                                                                                                                                          |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [GPS\_YAW\_OFFSET][GPS_YAW_OFFSET] | The angle made by the _baseline_ (the line between the two GPS antennas) relative to the vehicle x-axis (front/back axis, as shown [here][fc_orientation]). |
 | [EKF2\_GPS\_CTRL][EKF2_GPS_CTRL]   | Set bit position 3 "Dual antenna heading" to `1` (i.e. add 8 to the parameter value).    |
@@ -235,4 +235,5 @@ See the [Using PX4's Navigation Filter (EKF2) > GPS](../advanced_config/tuning_t
 ## 추가 정보
 
 - [RTK-GPS (PX4-Integration)](../advanced/rtk_gps.md): Developer information about integrating RTK-GPS support into PX4.
+- [u-blox Diagnostics with u-center](../gps_compass/u-center.md): bench-check RTCM reception and fix status on a u-blox rover/base.
 - [Real Time Kinematic](https://en.wikipedia.org/wiki/Real_Time_Kinematic) (Wikipedia)

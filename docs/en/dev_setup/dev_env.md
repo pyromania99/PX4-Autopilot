@@ -1,5 +1,10 @@
 # Setting up a Developer Environment (Toolchain)
 
+::: tip
+You only need a toolchain if you want to **modify and build** PX4 from source.
+If you just want to run PX4 simulation without changing the code, use a pre-built [Docker container or .deb package](../simulation/px4_sitl_prebuilt_packages.md) instead.
+:::
+
 The _supported platforms_ for PX4 development are:
 
 - [Ubuntu Linux (24.04/22.04)](../dev_setup/dev_env_linux_ubuntu.md)
@@ -16,7 +21,7 @@ The table below shows what PX4 targets you can build on each OS.
 | **Linux-based hardware:** [Raspberry Pi 2/3](../flight_controller/raspberry_pi_navio2.md)                                              |       ✓        |       |         |
 | **Simulation:** [Gazebo SITL](../sim_gazebo_gz/index.md)                                                                               |       ✓        |   ✓   |    ✓    |
 | **Simulation:** ROS 2 with Gazebo                                                                                                      |       ✓        |       |    ✓    |
-| **Simulation:** [Gazebo Classic SITL](../sim_gazebo_classic/index.md)                                                                  |                |   ✓   |    ✓    |
+| **Simulation:** [Gazebo Classic SITL](../sim_gazebo_classic/index.md)                                                                  |                |       |    ✓    |
 | **Simulation:** [ROS with Gazebo Classic](../simulation/ros_interface.md)                                                              |                |       |    ✓    |
 
 Experienced Docker users can also build with the containers used by our continuous integration system: [Docker Containers](../test_and_ci/docker.md)

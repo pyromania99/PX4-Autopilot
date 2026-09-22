@@ -24,7 +24,7 @@ ROS 与 PX4 存在若干不同的预设（假设），尤其是在 [frame conven
 
 按照 [ROS 2 用户指南](../ros2/user_guide.md)中的说明来安装PX 并运行多轴模拟器，安装ROS 2, 并启动XRCE-DDS代理。
 
-之后，我们可参照 [ROS 2 用户指南 > 构建 ROS 2 工作空间](../ros2/user_guide.md#build-ros-2-workspace)中的相似的步骤来运行这个例子。
+After that we can follow a similar set of steps to those in [ROS 2 User Guide > Running an example (optional)](../ros2/user_guide.md#running-an-example-optional) to run the example.
 
 :::tip
 运行 ROS 2 节点前，请确保 QGC已连接到 PX4。
@@ -143,7 +143,7 @@ OffboardControlMode消息会持续发送，以便 PX4 切换到离板模式后�
 publish_offboard_control_mode() 和 publish_trajectory_setpoint() 这两个方法的实现代码如下所示。
 这些方法会分别发布到 PX4 的 [OffboardControlMode](../msg_docs/OffboardControlMode.md和 [TrajectorySetpoint](../msg_docs/TrajectorySetpoint.md) 消息。
 
-OffboardControlMode（离板控制模式）消息是必需的，其作用是告知 PX4 当前所使用的离板控制类型。
+The `OffboardControlMode` is required in order to inform PX4 of the _type_ of offboard control being used.
 此处我们仅使用位置控制，因此将 `position` 字段设为`true`，而所有其他字段均设为 `false`。
 
 ```cpp
@@ -219,4 +219,4 @@ void OffboardControl::publish_vehicle_command(uint16_t command, float param1, fl
 
 ## 另见
 
-- [Python ROS2 offboard examples with PX4](https://github.com/Jaeyoung-Lim/px4-offboard) (Jaeyoung-Lim/px4-offboard).
+- [Python ROS 2 offboard examples with PX4](https://github.com/Jaeyoung-Lim/px4-offboard) (Jaeyoung-Lim/px4-offboard).

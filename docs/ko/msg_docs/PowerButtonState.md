@@ -6,23 +6,23 @@ pageClass: is-wide-page
 
 power button state notification message.
 
-**TOPICS:** power_buttonstate
+**TOPICS:** power_button_state
 
 ## Fields
 
-| 명칭        | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
-| --------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp | `uint64` |                                                                  |            | time since system start (microseconds) |
-| event     | `uint8`  |                                                                  |            | one of PWR_BUTTON_STATE_\*           |
+| 명칭                                  | 형식       | Unit [Frame] | Range/Enum | 설명                                                        |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_event"></a>event         | `uint8`  |                                                                  |            | one of PW&#x52;_&#x42;UTTON_STATE_\* |
 
 ## Constants
 
-| 명칭                                                                                                                                                                      | 형식      | Value | 설명                                                                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- | ------------------------------------------------------------------------------------------ |
-| <a href="#PWR_BUTTON_STATE_IDEL"></a> PWR_BUTTON_STATE_IDEL                                              | `uint8` | 0     | Button went up without meeting shutdown button down time (delete event) |
-| <a href="#PWR_BUTTON_STATE_DOWN"></a> PWR_BUTTON_STATE_DOWN                                              | `uint8` | 1     | Button went Down                                                                           |
-| <a href="#PWR_BUTTON_STATE_UP"></a> PWR_BUTTON_STATE_UP                                                  | `uint8` | 2     | Button went Up                                                                             |
-| <a href="#PWR_BUTTON_STATE_REQUEST_SHUTDOWN"></a> PWR_BUTTON_STATE_REQUEST_SHUTDOWN | `uint8` | 3     | Button went Up after meeting shutdown button down time                                     |
+| 명칭                                                                                                                                                                    | 형식      | Value | 설명                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- | ------------------------------------------------------------------------------------------ |
+| <a id="#PWR_BUTTON_STATE_IDEL"></a> PWR_BUTTON_STATE_IDEL                                              | `uint8` | 0     | Button went up without meeting shutdown button down time (delete event) |
+| <a id="#PWR_BUTTON_STATE_DOWN"></a> PWR_BUTTON_STATE_DOWN                                              | `uint8` | 1     | Button went Down                                                                           |
+| <a id="#PWR_BUTTON_STATE_UP"></a> PWR_BUTTON_STATE_UP                                                  | `uint8` | 2     | Button went Up                                                                             |
+| <a id="#PWR_BUTTON_STATE_REQUEST_SHUTDOWN"></a> PWR_BUTTON_STATE_REQUEST_SHUTDOWN | `uint8` | 3     | Button went Up after meeting shutdown button down time                                     |
 
 ## Source Message
 

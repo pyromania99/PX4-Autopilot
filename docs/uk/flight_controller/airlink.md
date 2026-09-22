@@ -26,7 +26,7 @@ AIRLink має два комп'ютери та інтегрований LTE-мо
 ## Характеристики
 
 - **Sensors**
-  - 3x акселерометри, 3x гіроскопи, 3x магнітометри, 3x датчики тиску
+  - 3x Accelerometers, 3x Gyroscopes, 3x Magnetometers, 3x Pressure sensors
   - ГНСС, далекоміри, лідари, оптичний потік, камери
   - 3x-кратне резервування IMU
   - Гасіння вібрації
@@ -59,7 +59,7 @@ AIRLink має два комп'ютери та інтегрований LTE-мо
   - Ethernet 10/100/1000 Native Gigabit
   - WiFi 802.11a/b/g/n/ac, Bluetooth
   - USB 3.0 Type C
-  - 2х Video: 4-смугова MIPI CSI (FPV-камера) та 4-смугова MIPI CSI з входом HMDI (камера корисного навантаження)
+  - 2x Video: 4-Lane MIPI CSI (FPV Camera) and 4-Lane MIPI CSI with HDMI Input (Payload Camera)
 
 - **LTE/5G Connectivity Module**
   - Пропускна здатність до 600 Мбіт/с
@@ -71,7 +71,7 @@ AIRLink має два комп'ютери та інтегрований LTE-мо
   - Антена, 4x4 MIMO
   - Bands: Worldwide
 
-## Де купити
+## Where to Buy {#store}
 
 Купуйте в оригінальному магазині Sky-Drones (доставка по всьому світу з обробкою замовлення за 1-2 дні):
 
@@ -92,8 +92,7 @@ AIRLink Enterprise прибуває з усім необхідним для на
 - 1x FPV камера з CSI кабелем
 - 1x WiFi антена з роз'ємом MMCX
 - 2x/4x LTE/5G антена з роз'ємом MMCX
-- 1x кабель HDMI на міні HDMI
-  1x набір кабелів (7 кабелів для всіх роз'ємів)
+- 1x HDMI to mini HDMI cable, 1x set of cables (7 cables for all connectors)
 
 [AIRLink Telemetry](https://sky-drones.com/sets/airlink-telemetry-set.html) based on the Microhard LAN/IP-based RF micromodule is available as an add-on and is fully compatible with AIRLink.
 
@@ -115,7 +114,7 @@ AIRLink Enterprise ідеально підходить для швидкого �
 
 ![AIRLink Core](../../assets/flight_controller/airlink/airlink-core.jpg)
 
-| Параметр               | AIRLink Enterprise                                                                               | AIRLink Core                                                                                                |
+| Parameter              | AIRLink Enterprise                                                                               | AIRLink Core                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | Корпус                 | Алюмінієвий, з інтегрованим тепловідводом і можливістю встановлення вентилятора. | Зовнішній тепловідвід або достатнє розсіювання тепла повинно бути передбачено конструкцією. |
 | Розміри                | Д103 x Ш61 x В37 мм                                                                              | Д100 x Ш57 x В22 мм                                                                                         |
@@ -332,7 +331,7 @@ RC-вхід конфігурується на виводі SBUS і підклю�
 
 ## Виводи
 
-AIRLink має 16 ШІМ-виходів. Основні виходи 1-8 і підключені до IO MCU. Виходи AUX 1-8 підключено до FMU.
+AIRLink has 16 PWM outputs. Основні виходи 1-8 і підключені до IO MCU. Виходи AUX 1-8 підключено до FMU.
 
 | Output | Таймер   | Канал     |
 | ------ | -------- | --------- |
@@ -356,7 +355,7 @@ It is pre-built and automatically installed by _QGroundControl_ when appropriate
 
 To [build PX4](../dev_setup/building_px4.md) for this target:
 
-```
+```sh
 make sky-drones_smartap-airlink
 ```
 

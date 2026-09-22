@@ -45,7 +45,7 @@ using matrix::Vector2f;
 
 ModuleBase::Descriptor FwLateralLongitudinalControl::desc{task_spawn, custom_command, print_usage};
 
-// [m/s] maximum reference altitude rate threshhold
+// [m/s] maximum reference altitude rate threshold
 static constexpr float MAX_ALT_REF_RATE_FOR_LEVEL_FLIGHT = 0.1f;
 // [us] time after which the wind estimate is disabled if no longer updating
 static constexpr hrt_abstime WIND_EST_TIMEOUT = 10_s;
@@ -58,13 +58,19 @@ static constexpr float COS_HEADING_TRACK_ANGLE_NOT_PUSHED_BACK{0.09f}; ///< Cos 
 static constexpr float COS_HEADING_TRACK_ANGLE_PUSHED_BACK{0.f}; ///< Cos of Heading to track angle above which it is assumed that the vehicle is pushed back by the wind
 
 // [s] Timeout that has to pass in roll-constraining failsafe before warning is triggered
-static constexpr uint64_t ROLL_WARNING_TIMEOUT = 2_s;
+static constexpr hrt_abstime ROLL_WARNING_TIMEOUT = 2_s;
 
 // [-] Can-run threshold needed to trigger the roll-constraining failsafe warning
 static constexpr float ROLL_WARNING_CAN_RUN_THRESHOLD = 0.9f;
 
 // [m/s/s] slew rate limit for airspeed setpoint changes
 static constexpr float ASPD_SP_SLEW_RATE = 1.f;
+
+// [us] time constant of the fuel fraction filter, needs to be slow enough to reject fuel sloshing
+static constexpr hrt_abstime FUEL_FRACTION_FILTER_TIME_CONST = 30_s;
+
+// [us] maximum time step used to advance the fuel fraction filter on a new sample
+static constexpr hrt_abstime FUEL_FRACTION_FILTER_MAX_DT = 10_s;
 
 FwLateralLongitudinalControl::FwLateralLongitudinalControl(bool is_vtol) :
 	ModuleParams(nullptr),
@@ -76,8 +82,14 @@ FwLateralLongitudinalControl::FwLateralLongitudinalControl(bool is_vtol) :
 	_tecs_status_pub.advertise();
 	_flight_phase_estimation_pub.advertise();
 	_fixed_wing_lateral_status_pub.advertise();
+
+	_fuel_fraction_filter.setParameters(hrt_abstime{0}, FUEL_FRACTION_FILTER_TIME_CONST);
+
 	parameters_update();
 	_airspeed_slew_rate_controller.setSlewRate(ASPD_SP_SLEW_RATE);
+
+	_tecs_alt_time_const_slew_rate.setSlewRate(TECS_ALT_TIME_CONST_SLEW_RATE);
+	_tecs_alt_time_const_slew_rate.setForcedValue(_param_fw_t_h_error_tc.get() * _param_fw_thrtc_sc.get());
 }
 
 FwLateralLongitudinalControl::~FwLateralLongitudinalControl()
@@ -95,7 +107,6 @@ FwLateralLongitudinalControl::parameters_update()
 	_tecs.set_max_sink_rate(_param_fw_t_sink_max.get());
 	_tecs.set_min_sink_rate(_performance_model.getMinimumSinkRate(_air_density));
 	_tecs.set_equivalent_airspeed_trim(_performance_model.getCalibratedTrimAirspeed());
-	_tecs.set_equivalent_airspeed_min(_performance_model.getMinimumCalibratedAirspeed(getLoadFactor(), _flaps_setpoint));
 	_tecs.set_equivalent_airspeed_max(_performance_model.getMaximumCalibratedAirspeed());
 	_tecs.set_throttle_damp(_param_fw_t_thr_damping.get());
 	_tecs.set_integrator_gain_throttle(_param_fw_t_thr_integ.get());
@@ -110,14 +121,10 @@ FwLateralLongitudinalControl::parameters_update()
 	_tecs.set_airspeed_error_time_constant(_param_fw_t_tas_error_tc.get());
 	_tecs.set_ste_rate_time_const(_param_ste_rate_time_const.get());
 	_tecs.set_seb_rate_ff_gain(_param_seb_rate_ff.get());
-	_tecs.set_airspeed_measurement_std_dev(_param_speed_standard_dev.get());
-	_tecs.set_airspeed_rate_measurement_std_dev(_param_speed_rate_standard_dev.get());
-	_tecs.set_airspeed_filter_process_std_dev(_param_process_noise_standard_dev.get());
 
 	_roll_slew_rate.setSlewRate(radians(_param_fw_pn_r_slew_max.get()));
 
-	_tecs_alt_time_const_slew_rate.setSlewRate(TECS_ALT_TIME_CONST_SLEW_RATE);
-	_tecs_alt_time_const_slew_rate.setForcedValue(_param_fw_t_h_error_tc.get() * _param_fw_thrtc_sc.get());
+	_airspeed_direction_control.setPGainFromPeriodAndDamping(_param_npfg_damping.get(), _param_npfg_period.get());
 }
 
 void FwLateralLongitudinalControl::Run()
@@ -162,6 +169,8 @@ void FwLateralLongitudinalControl::Run()
 			_tecs.set_min_sink_rate(_performance_model.getMinimumSinkRate(_air_density));
 		}
 
+		updateFuelState();
+
 		if (_vehicle_landed_sub.updated()) {
 			vehicle_land_detected_s landed{};
 			_vehicle_landed_sub.copy(&landed);
@@ -191,7 +200,6 @@ void FwLateralLongitudinalControl::Run()
 
 		const bool should_run = (_control_mode_sub.get().flag_control_position_enabled ||
 					 _control_mode_sub.get().flag_control_velocity_enabled ||
-					 _control_mode_sub.get().flag_control_acceleration_enabled ||
 					 _control_mode_sub.get().flag_control_altitude_enabled ||
 					 _control_mode_sub.get().flag_control_climb_rate_enabled) &&
 					(_vehicle_status_sub.get().vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING
@@ -213,20 +221,25 @@ void FwLateralLongitudinalControl::Run()
 			// If the both altitude and height rate are set, set altitude setpoint to NAN
 			const float altitude_sp = PX4_ISFINITE(_long_control_sp.height_rate) ? NAN : _long_control_sp.altitude;
 
-			current_flight_phase = tecs_update_pitch_throttle(control_interval, altitude_sp,
-					       airspeed_sp_eas,
-					       _long_configuration.pitch_min,
-					       _long_configuration.pitch_max,
-					       _long_configuration.throttle_min,
-					       _long_configuration.throttle_max,
-					       _long_configuration.sink_rate_target,
-					       _long_configuration.climb_rate_target,
-					       _long_configuration.disable_underspeed_protection,
-					       _long_control_sp.height_rate,
-					       now
-									 );
+			current_flight_phase = tecs_update_pitch_throttle(
+						       control_interval, altitude_sp, airspeed_sp_eas,
+						       _long_configuration.pitch_min,
+						       _long_configuration.pitch_max,
+						       _long_configuration.throttle_min,
+						       _long_configuration.throttle_max,
+						       _long_configuration.sink_rate_target,
+						       _long_configuration.climb_rate_target,
+						       _long_configuration.disable_underspeed_protection,
+						       _long_control_sp.height_rate,
+						       now
+					       );
 
-			pitch_sp = PX4_ISFINITE(_long_control_sp.pitch_direct) ? _long_control_sp.pitch_direct : _tecs.get_pitch_setpoint();
+			// Trim pitch is subtracted before entering TECS (in tecs_update_pitch_throttle),
+			// so it has to be added back here.
+			pitch_sp = PX4_ISFINITE(_long_control_sp.pitch_direct)
+				   ?  _long_control_sp.pitch_direct
+				   : _tecs.get_pitch_setpoint() + radians(_param_fw_psp_off.get());
+
 			throttle_sp = PX4_ISFINITE(_long_control_sp.throttle_direct) ? _long_control_sp.throttle_direct :
 				      _tecs.get_throttle_setpoint();
 
@@ -298,7 +311,7 @@ void FwLateralLongitudinalControl::Run()
 			// additional is_finite checks that should not be necessary, but are kept for safety
 			float roll_body = PX4_ISFINITE(roll_sp) ? roll_sp : 0.0f;
 			float pitch_body = PX4_ISFINITE(pitch_sp) ? pitch_sp : 0.0f;
-			const float yaw_body = _yaw; // yaw is not controlled in fixed wing, need to set it though for quaternion generation
+			float yaw_body = _yaw;
 			const float thrust_body_x = PX4_ISFINITE(throttle_sp) ? throttle_sp : 0.0f;
 
 			if (_control_mode_sub.get().flag_control_manual_enabled) {
@@ -441,6 +454,54 @@ FwLateralLongitudinalControl::tecs_update_pitch_throttle(const float control_int
 	return flight_phase_estimation_s::FLIGHT_PHASE_UNKNOWN;
 }
 
+void FwLateralLongitudinalControl::updateFuelState()
+{
+	fuel_tank_status_s fuel_tank_status;
+
+	for (auto &sub : _fuel_tank_status_subs) {
+		if (!sub.update(&fuel_tank_status)) {
+			continue;
+		}
+
+		// only the tank with id 0 is used for weight compensation, multi-tank systems
+		// are expected to publish an aggregated total as tank 0
+		if (fuel_tank_status.fuel_tank_id != 0) {
+			if (!_ignored_fuel_tank_reported && _performance_model.isFuelCompensationEnabled()) {
+				PX4_WARN("Ignoring fuel tank status with tank id %d, only tank 0 is used for weight compensation",
+					 fuel_tank_status.fuel_tank_id);
+				_ignored_fuel_tank_reported = true;
+			}
+
+			continue;
+		}
+
+		const float fuel_fraction_remaining = PerformanceModel::getFuelFractionRemaining(fuel_tank_status);
+
+		if (!PX4_ISFINITE(fuel_fraction_remaining)) {
+			continue;
+		}
+
+		if (_time_last_fuel_fraction_update == 0) {
+			_fuel_fraction_filter.reset(fuel_fraction_remaining);
+
+		} else if (fuel_tank_status.timestamp > _time_last_fuel_fraction_update) {
+			const hrt_abstime dt_us = math::min(fuel_tank_status.timestamp - _time_last_fuel_fraction_update,
+							    FUEL_FRACTION_FILTER_MAX_DT);
+			_fuel_fraction_filter.update(fuel_fraction_remaining, dt_us);
+
+		} else {
+			// out-dated sample
+			continue;
+		}
+
+		_time_last_fuel_fraction_update = fuel_tank_status.timestamp;
+
+		_performance_model.setFuelFractionRemaining(_fuel_fraction_filter.getState());
+
+		_tecs.set_equivalent_airspeed_trim(_performance_model.getCalibratedTrimAirspeed());
+	}
+}
+
 void
 FwLateralLongitudinalControl::tecs_status_publish(float alt_sp, float equivalent_airspeed_sp,
 		float true_airspeed_derivative_raw, float throttle_trim, hrt_abstime timestamp)
@@ -469,10 +530,14 @@ FwLateralLongitudinalControl::tecs_status_publish(float alt_sp, float equivalent
 	tecs_status.throttle_integ = debug_output.control.throttle_integrator;
 	tecs_status.pitch_integ = debug_output.control.pitch_integrator;
 	tecs_status.throttle_sp = _tecs.get_throttle_setpoint();
-	tecs_status.pitch_sp_rad = _tecs.get_pitch_setpoint();
+
+	// Trim pitch is subtracted before entering TECS (in tecs_update_pitch_throttle),
+	// so it has to be added back here.
+	tecs_status.pitch_sp_rad = _tecs.get_pitch_setpoint() + radians(_param_fw_psp_off.get());
 	tecs_status.throttle_trim = throttle_trim;
 	tecs_status.underspeed_ratio = _tecs.get_underspeed_ratio();
 	tecs_status.fast_descend_ratio = debug_output.fast_descend;
+	tecs_status.weight_ratio = _performance_model.getWeightRatio();
 
 	tecs_status.timestamp = timestamp;
 
@@ -609,9 +674,14 @@ void FwLateralLongitudinalControl::updateAttitude() {
 		_long_control_state.pitch_rad = euler_angles.theta();
 		_yaw = euler_angles.psi();
 
-		// load factor due to banking
-		const float load_factor_from_bank_angle = 1.0f / max(cosf(euler_angles.phi()), FLT_EPSILON);
-		_tecs.set_load_factor(load_factor_from_bank_angle);
+		_load_factor_from_bank_angle = 1.0f / max(cosf(euler_angles.phi()), FLT_EPSILON);
+
+		// Used to compensate for higher induced drag during banking
+		_tecs.set_load_factor(_load_factor_from_bank_angle);
+		// Used to give underspeed mitigation the correct minimum airspeed
+		_tecs.set_equivalent_airspeed_min(
+			_performance_model.getMinimumCalibratedAirspeed(_load_factor_from_bank_angle, _flaps_setpoint)
+		);
 	}
 }
 
@@ -628,7 +698,12 @@ void FwLateralLongitudinalControl::updateAirspeed() {
 
 			_time_airspeed_last_valid = airspeed_validated.timestamp;
 			_long_control_state.airspeed_eas = airspeed_validated.calibrated_airspeed_m_s;
-			_long_control_state.eas2tas = constrain(airspeed_validated.true_airspeed_m_s / airspeed_validated.calibrated_airspeed_m_s, 0.9f, 2.0f);
+
+			// before takeoff the ratio can be 0/0 = NaN, which constrain() passes through; keep the previous value then
+			if (fabsf(airspeed_validated.calibrated_airspeed_m_s) > FLT_EPSILON) {
+				_long_control_state.eas2tas = constrain(airspeed_validated.true_airspeed_m_s /
+									airspeed_validated.calibrated_airspeed_m_s, 0.9f, 2.0f);
+			}
 		}
 	}
 
@@ -646,7 +721,7 @@ float
 FwLateralLongitudinalControl::adapt_airspeed_setpoint(const float control_interval, float calibrated_airspeed_setpoint,
 		float calibrated_min_airspeed_guidance, float wind_speed)
 {
-	float system_min_airspeed = _performance_model.getMinimumCalibratedAirspeed(getLoadFactor(), _flaps_setpoint);
+	float system_min_airspeed = _performance_model.getMinimumCalibratedAirspeed(_load_factor_from_bank_angle, _flaps_setpoint);
 
 	const float system_max_airspeed = _performance_model.getMaximumCalibratedAirspeed();
 
@@ -742,7 +817,7 @@ float FwLateralLongitudinalControl::getGuidanceQualityFactor(const vehicle_local
 							    0.f, 1.f));
 
 	// Check that the angle between heading and track is not off too much. if it is greater than 90° we will be pushed back from the wind and the npfg will propably give a roll command in the wrong direction.
-	const Vector2f heading_vector(matrix::Dcm2f(local_pos.heading)*Vector2f({1.f, 0.f}));
+	const Vector2f heading_vector(matrix::Dcm2f(_yaw)*Vector2f({1.f, 0.f}));
 	const Vector2f ground_vel_norm(ground_vel.normalized());
 	const float flying_forward_factor(math::constrain((heading_vector.dot(ground_vel_norm) -
 							   COS_HEADING_TRACK_ANGLE_PUSHED_BACK) / ((COS_HEADING_TRACK_ANGLE_NOT_PUSHED_BACK -
@@ -848,19 +923,6 @@ void FwLateralLongitudinalControl::updateLongitudinalControlConfiguration(const 
 	} else {
 		_long_configuration.speed_weight = _param_t_spdweight.get();
 	}
-}
-
-float FwLateralLongitudinalControl::getLoadFactor() const
-{
-	float load_factor_from_bank_angle = 1.f;
-
-	const float roll_body = Eulerf(Quatf(_att_sp.q_d)).phi();
-
-	if (PX4_ISFINITE(roll_body)) {
-		load_factor_from_bank_angle = 1.f / math::max(cosf(roll_body), FLT_EPSILON);
-	}
-
-	return load_factor_from_bank_angle;
 }
 
 extern "C" __EXPORT int fw_lat_lon_control_main(int argc, char *argv[])

@@ -10,21 +10,21 @@ Trajectory setpoint in NED frame. Input to PID position controller. Потріб
 
 ## Fields
 
-| Назва        | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                |
-| ------------ | ------------ | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------- |
-| timestamp    | `uint64`     |                                                                  |            | time since system start (microseconds)                           |
-| положення    | `float32[3]` |                                                                  |            | in meters                                                                           |
-| швидкість    | `float32[3]` |                                                                  |            | in meters/second                                                                    |
-| acceleration | `float32[3]` |                                                                  |            | in meters/second^2                                                                  |
-| jerk         | `float32[3]` |                                                                  |            | in meters/second^3 (for logging only)                            |
-| yaw          | `float32`    |                                                                  |            | euler angle of desired attitude in radians -PI..+PI |
-| yawspeed     | `float32`    |                                                                  |            | angular velocity around NED frame z-axis in radians/second                          |
+| Назва                                     | Тип          | Unit [Frame] | Range/Enum | Опис                                                                                |
+| ----------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp       | `uint64`     |                                                                  |            | time since system start (microseconds)                           |
+| <a id="fld_position"></a>position         | `float32[3]` |                                                                  |            | in meters                                                                           |
+| <a id="fld_velocity"></a>velocity         | `float32[3]` |                                                                  |            | in meters/second                                                                    |
+| <a id="fld_acceleration"></a>acceleration | `float32[3]` |                                                                  |            | in meters/second^2                                                                  |
+| <a id="fld_jerk"></a>jerk                 | `float32[3]` |                                                                  |            | in meters/second^3 (for logging only)                            |
+| <a id="fld_yaw"></a>yaw                   | `float32`    |                                                                  |            | euler angle of desired attitude in radians -PI..+PI |
+| <a id="fld_yawspeed"></a>yawspeed         | `float32`    |                                                                  |            | angular velocity around NED frame z-axis in radians/second                          |
 
 ## Constants
 
-| Назва                                                                | Тип      | Значення | Опис |
-| -------------------------------------------------------------------- | -------- | -------- | ---- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
+| Назва                                                              | Тип      | Значення | Опис |
+| ------------------------------------------------------------------ | -------- | -------- | ---- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0        |      |
 
 ## Source Message
 

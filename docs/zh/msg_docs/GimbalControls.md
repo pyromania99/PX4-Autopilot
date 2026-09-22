@@ -8,19 +8,19 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 参数名                                   | 类型           | Unit [Frame] | Range/Enum | 描述                                                                                                                                                                                                               |
-| ------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| timestamp                             | `uint64`     |                                                                  |            | time since system start (microseconds)                                                                                                                                                        |
-| timestamp_sample | `uint64`     |                                                                  |            | the timestamp the data this control response is based on was sampled                                                                                                                                             |
-| control                               | `float32[3]` |                                                                  |            | Normalized output. 1 means maximum positive position. -1 maximum negative position. 0 means no deflection. NaN maps to disarmed. |
+| 参数名                                                                    | 类型           | Unit [Frame] | Range/Enum | 描述                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`     |                                                                  |            | time since system start (microseconds)                                                                                                                                                        |
+| <a id="fld_timestamp_sample"></a>timestamp_sample | `uint64`     |                                                                  |            | the timestamp the data this control response is based on was sampled                                                                                                                                             |
+| <a id="fld_control"></a>control                                        | `float32[3]` |                                                                  |            | Normalized output. 1 means maximum positive position. -1 maximum negative position. 0 means no deflection. NaN maps to disarmed. |
 
 ## Constants
 
-| 参数名                                                          | 类型      | 值 | 描述 |
-| ------------------------------------------------------------ | ------- | - | -- |
-| <a href="#INDEX_ROLL"></a> INDEX_ROLL   | `uint8` | 0 |    |
-| <a href="#INDEX_PITCH"></a> INDEX_PITCH | `uint8` | 1 |    |
-| <a href="#INDEX_YAW"></a> INDEX_YAW     | `uint8` | 2 |    |
+| 参数名                                                        | 类型      | 值 | 描述 |
+| ---------------------------------------------------------- | ------- | - | -- |
+| <a id="#INDEX_ROLL"></a> INDEX_ROLL   | `uint8` | 0 |    |
+| <a id="#INDEX_PITCH"></a> INDEX_PITCH | `uint8` | 1 |    |
+| <a id="#INDEX_YAW"></a> INDEX_YAW     | `uint8` | 2 |    |
 
 ## Source Message
 

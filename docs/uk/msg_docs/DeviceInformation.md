@@ -13,39 +13,44 @@ as well as tracking of the used firmware versions on the devices.
 
 ## Fields
 
-| Назва                                 | Тип        | Unit [Frame] | Range/Enum                                                                                                                                                              | Опис                                                                                                                            |
-| ------------------------------------- | ---------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| timestamp                             | `uint64`   |                                                                  |                                                                                                                                                                         | time since system start (microseconds)                                                                       |
-| device_type      | `uint8`    |                                                                  | [DEVICE_TYPE](#DEVICE_TYPE)                                                                                                                        | Type of the device. Matches MAVLink DEVICE_TYPE enum                                       |
-| vendor_name      | `char[32]` |                                                                  |                                                                                                                                                                         | Name of the device vendor                                                                                                       |
-| model_name       | `char[32]` |                                                                  |                                                                                                                                                                         | Name of the device model                                                                                                        |
-| `uint32`                              |            |                                                                  | Unique device ID for the sensor. Does not change between power cycles. (Invalid: 0 if not available) |                                                                                                                                 |
-| firmware_version | `char[24]` |                                                                  |                                                                                                                                                                         | Firmware version. (Invalid: empty if not available)                          |
-| hardware_version | `char[24]` |                                                                  |                                                                                                                                                                         | Hardware version. (Invalid: empty if not available)                          |
-| serial_number    | `char[33]` |                                                                  |                                                                                                                                                                         | Device serial number or unique identifier. (Invalid: empty if not available) |
+| Назва                                                                  | Тип        | Unit [Frame] | Range/Enum                                       | Опис                                                                                                                                                                    |
+| ---------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`   |                                                                  |                                                  | time since system start (microseconds)                                                                                                               |
+| <a id="fld_device_type"></a>device_type           | `uint8`    |                                                                  | [DEVICE_TYPE](#DEVICE_TYPE) | Type of the device. Matches MAVLink DEVICE_TYPE enum                                                                               |
+| <a id="fld_name"></a>name                                              | `char[80]` |                                                                  |                                                  | Name of device e.g. DroneCAN node name                                                                                                  |
+| <a id="fld_"></a>                                                      | `uint32`   |                                                                  |                                                  | Unique device ID for the sensor. Does not change between power cycles. (Invalid: 0 if not available) |
+| <a id="fld_firmware_version"></a>firmware_version | `char[24]` |                                                                  |                                                  | Firmware version. (Invalid: empty if not available)                                                                  |
+| <a id="fld_hardware_version"></a>hardware_version | `char[24]` |                                                                  |                                                  | Hardware version. (Invalid: empty if not available)                                                                  |
+| <a id="fld_serial_number"></a>serial_number       | `char[33]` |                                                                  |                                                  | Device serial number or unique identifier. (Invalid: empty if not available)                                         |
 
 ## Enums
 
 ### DEVICE_TYPE {#DEVICE_TYPE}
 
-| Назва                                                                                                                                              | Тип     | Значення | Опис                   |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ---------------------- |
-| <a href="#DEVICE_TYPE_GENERIC"></a> DEVICE_TYPE_GENERIC                                                  | `uint8` | 0        | Generic/unknown sensor |
-| <a href="#DEVICE_TYPE_AIRSPEED"></a> DEVICE_TYPE_AIRSPEED                                                | `uint8` | 1        | Датчик швидкості       |
-| <a href="#DEVICE_TYPE_ESC"></a> DEVICE_TYPE_ESC                                                          | `uint8` | 2        | ESC                    |
-| <a href="#DEVICE_TYPE_SERVO"></a> DEVICE_TYPE_SERVO                                                      | `uint8` | 3        | Servo                  |
-| <a href="#DEVICE_TYPE_GPS"></a> DEVICE_TYPE_GPS                                                          | `uint8` | 4        | GPS                    |
-| <a href="#DEVICE_TYPE_MAGNETOMETER"></a> DEVICE_TYPE_MAGNETOMETER                                        | `uint8` | 5        | Магнітометр            |
-| <a href="#DEVICE_TYPE_PARACHUTE"></a> DEVICE_TYPE_PARACHUTE                                              | `uint8` | 6        | Парашут                |
-| <a href="#DEVICE_TYPE_RANGEFINDER"></a> DEVICE_TYPE_RANGEFINDER                                          | `uint8` | 7        | Rangefinder            |
-| <a href="#DEVICE_TYPE_WINCH"></a> DEVICE_TYPE_WINCH                                                      | `uint8` | 8        | Winch                  |
-| <a href="#DEVICE_TYPE_BAROMETER"></a> DEVICE_TYPE_BAROMETER                                              | `uint8` | 9        | Барометр               |
-| <a href="#DEVICE_TYPE_OPTICAL_FLOW"></a> DEVICE_TYPE_OPTICAL_FLOW                   | `uint8` | 10       | Optical flow           |
-| <a href="#DEVICE_TYPE_ACCELEROMETER"></a> DEVICE_TYPE_ACCELEROMETER                                      | `uint8` | 11       | Accelerometer          |
-| <a href="#DEVICE_TYPE_GYROSCOPE"></a> DEVICE_TYPE_GYROSCOPE                                              | `uint8` | 12       | Gyroscope              |
-| <a href="#DEVICE_TYPE_DIFFERENTIAL_PRESSURE"></a> DEVICE_TYPE_DIFFERENTIAL_PRESSURE | `uint8` | 13       | Differential pressure  |
-| <a href="#DEVICE_TYPE_BATTERY"></a> DEVICE_TYPE_BATTERY                                                  | `uint8` | 14       | Battery                |
-| <a href="#DEVICE_TYPE_HYGROMETER"></a> DEVICE_TYPE_HYGROMETER                                            | `uint8` | 15       | Hygrometer             |
+Used in field(s): [device_type](#fld_device_type)
+
+| Назва                                                                                                                                            | Тип     | Значення | Опис                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | -------- | -------------------------------------------------- |
+| <a id="#DEVICE_TYPE_GENERIC"></a> DEVICE_TYPE_GENERIC                                                  | `uint8` | 0        | Generic/unknown sensor                             |
+| <a id="#DEVICE_TYPE_AIRSPEED"></a> DEVICE_TYPE_AIRSPEED                                                | `uint8` | 1        | Датчик швидкості                                   |
+| <a id="#DEVICE_TYPE_ESC"></a> DEVICE_TYPE_ESC                                                          | `uint8` | 2        | ESC                                                |
+| <a id="#DEVICE_TYPE_SERVO"></a> DEVICE_TYPE_SERVO                                                      | `uint8` | 3        | Servo                                              |
+| <a id="#DEVICE_TYPE_GPS"></a> DEVICE_TYPE_GPS                                                          | `uint8` | 4        | GPS                                                |
+| <a id="#DEVICE_TYPE_MAGNETOMETER"></a> DEVICE_TYPE_MAGNETOMETER                                        | `uint8` | 5        | Магнітометр                                        |
+| <a id="#DEVICE_TYPE_PARACHUTE"></a> DEVICE_TYPE_PARACHUTE                                              | `uint8` | 6        | Парашут                                            |
+| <a id="#DEVICE_TYPE_RANGEFINDER"></a> DEVICE_TYPE_RANGEFINDER                                          | `uint8` | 7        | 1D Rangefinder                                     |
+| <a id="#DEVICE_TYPE_WINCH"></a> DEVICE_TYPE_WINCH                                                      | `uint8` | 8        | Winch                                              |
+| <a id="#DEVICE_TYPE_BAROMETER"></a> DEVICE_TYPE_BAROMETER                                              | `uint8` | 9        | Барометр                                           |
+| <a id="#DEVICE_TYPE_OPTICAL_FLOW"></a> DEVICE_TYPE_OPTICAL_FLOW                   | `uint8` | 10       | Optical flow                                       |
+| <a id="#DEVICE_TYPE_ACCELEROMETER"></a> DEVICE_TYPE_ACCELEROMETER                                      | `uint8` | 11       | Accelerometer                                      |
+| <a id="#DEVICE_TYPE_GYROSCOPE"></a> DEVICE_TYPE_GYROSCOPE                                              | `uint8` | 12       | Gyroscope                                          |
+| <a id="#DEVICE_TYPE_DIFFERENTIAL_PRESSURE"></a> DEVICE_TYPE_DIFFERENTIAL_PRESSURE | `uint8` | 13       | Differential pressure                              |
+| <a id="#DEVICE_TYPE_BATTERY"></a> DEVICE_TYPE_BATTERY                                                  | `uint8` | 14       | Battery                                            |
+| <a id="#DEVICE_TYPE_HYGROMETER"></a> DEVICE_TYPE_HYGROMETER                                            | `uint8` | 15       | Hygrometer                                         |
+| <a id="#DEVICE_TYPE_TRAFFIC_AVOIDANCE"></a> DEVICE_TYPE_TRAFFIC_AVOIDANCE         | `uint8` | 16       | Traffic Avoidance system (ADSB) |
+| <a id="#DEVICE_TYPE_COMPUTE"></a> DEVICE_TYPE_COMPUTE                                                  | `uint8` | 17       | Compute boards                                     |
+| <a id="#DEVICE_TYPE_LIDAR"></a> DEVICE_TYPE_LIDAR                                                      | `uint8` | 18       | 3D scanning / multi-beam Lidar                     |
+| <a id="#DEVICE_TYPE_STEREO_CAMERA"></a> DEVICE_TYPE_STEREO_CAMERA                 | `uint8` | 19       | stereo/depth camera                                |
 
 ## Source Message
 
@@ -63,7 +68,6 @@ Click here to see original file
 uint64 timestamp  # time since system start (microseconds)
 
 uint8 device_type  # [@enum DEVICE_TYPE] Type of the device. Matches MAVLink DEVICE_TYPE enum
-
 uint8 DEVICE_TYPE_GENERIC = 0                 # Generic/unknown sensor
 uint8 DEVICE_TYPE_AIRSPEED = 1                # Airspeed sensor
 uint8 DEVICE_TYPE_ESC = 2                     # ESC
@@ -71,7 +75,7 @@ uint8 DEVICE_TYPE_SERVO = 3                   # Servo
 uint8 DEVICE_TYPE_GPS = 4                     # GPS
 uint8 DEVICE_TYPE_MAGNETOMETER = 5            # Magnetometer
 uint8 DEVICE_TYPE_PARACHUTE = 6               # Parachute
-uint8 DEVICE_TYPE_RANGEFINDER = 7             # Rangefinder
+uint8 DEVICE_TYPE_RANGEFINDER = 7             # 1D Rangefinder
 uint8 DEVICE_TYPE_WINCH = 8                   # Winch
 uint8 DEVICE_TYPE_BAROMETER = 9               # Barometer
 uint8 DEVICE_TYPE_OPTICAL_FLOW = 10           # Optical flow
@@ -80,9 +84,13 @@ uint8 DEVICE_TYPE_GYROSCOPE = 12              # Gyroscope
 uint8 DEVICE_TYPE_DIFFERENTIAL_PRESSURE = 13  # Differential pressure
 uint8 DEVICE_TYPE_BATTERY = 14                # Battery
 uint8 DEVICE_TYPE_HYGROMETER = 15             # Hygrometer
+uint8 DEVICE_TYPE_TRAFFIC_AVOIDANCE = 16      # Traffic Avoidance system (ADSB)
+uint8 DEVICE_TYPE_COMPUTE = 17                # Compute boards
+uint8 DEVICE_TYPE_LIDAR = 18                  # 3D scanning / multi-beam Lidar
+uint8 DEVICE_TYPE_STEREO_CAMERA = 19          # stereo/depth camera
 
-char[32] vendor_name  # Name of the device vendor
-char[32] model_name   # Name of the device model
+
+char[80] name # Name of device e.g. DroneCAN node name
 
 uint32   device_id         # [-] [@invalid 0 if not available] Unique device ID for the sensor. Does not change between power cycles.
 char[24] firmware_version  # [-] [@invalid empty if not available] Firmware version.

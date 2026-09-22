@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import time
-from typing import Any, Dict, List, NoReturn, TextIO, Optional
+from typing import Any, Callable, Dict, List, NoReturn, TextIO, Optional
 from types import FrameType
 from . import process_helper as ph
 from .logger_helper import color, colorize
@@ -75,6 +75,7 @@ class Tester:
         self.tester_interface = tester_interface
         self.tests = self.determine_tests(config['tests'], model, case)
         self.active_runners = []
+        self.pre_test_hook: Optional[Callable[[str, str], None]] = None
 
     @staticmethod
     def wildcard_match(pattern: str, potential_match: str) -> bool:
@@ -203,6 +204,9 @@ class Tester:
                           .format(log_dir))
                 os.makedirs(log_dir, exist_ok=True)
 
+                if self.pre_test_hook is not None:
+                    self.pre_test_hook(test['model'], key)
+
                 was_success = self.run_test_case(test, key, log_dir)
 
                 print("--- Test case {} of {}: '{}' {}."
@@ -302,7 +306,7 @@ class Tester:
         self.active_runners = []
 
         if self.config['mode'] == 'sitl':
-            if self.config['simulator'] == 'gazebo':
+            if self.config.get('simulator') == 'gazebo':
                 # Use RegEx to extract worldname.world from case name
                 match = re.search(r'\((.*?\.world)\)', case)
                 if match:
@@ -313,7 +317,7 @@ class Tester:
                 gzserver_runner = ph.GzserverRunner(
                     os.getcwd(),
                     log_dir,
-                    test['vehicle'],
+                    test['model'],
                     case,
                     self.get_max_speed_factor(test),
                     self.verbose,
@@ -324,7 +328,7 @@ class Tester:
                 gzmodelspawn_runner = ph.GzmodelspawnRunner(
                     os.getcwd(),
                     log_dir,
-                    test['vehicle'],
+                    test['model'],
                     case,
                     self.verbose,
                     self.build_dir)
@@ -339,24 +343,23 @@ class Tester:
                         self.verbose)
                     self.active_runners.append(gzclient_runner)
 
-                # We must start the PX4 instance at the end, as starting
-                # it in the beginning, then connecting Gazebo server freaks
-                # out the PX4 (it needs to have data coming in when started),
-                # and can lead to EKF to freak out, or the instance itself
-                # to die unexpectedly.
-                px4_runner = ph.Px4Runner(
-                    os.getcwd(),
-                    log_dir,
-                    test['model'],
-                    case,
-                    self.get_max_speed_factor(test),
-                    self.debugger,
-                    self.verbose,
-                    self.build_dir,
-                    self.tester_interface.rootfs_base_dirname())
-                for env_key in test.get('env', []):
-                    px4_runner.env[env_key] = str(test['env'][env_key])
-                self.active_runners.append(px4_runner)
+            # Determine PX4_SIM_MODEL using model_prefix from config
+            model_prefix = self.config.get('model_prefix', '')
+            px4_model = model_prefix + test['model']
+
+            px4_runner = ph.Px4Runner(
+                os.getcwd(),
+                log_dir,
+                px4_model,
+                case,
+                self.get_max_speed_factor(test),
+                self.debugger,
+                self.verbose,
+                self.build_dir,
+                self.tester_interface.rootfs_base_dirname())
+            for env_key in test.get('env', []):
+                px4_runner.env[env_key] = str(test['env'][env_key])
+            self.active_runners.append(px4_runner)
 
         self.active_runners.append(self.tester_interface.create_test_runner(
             os.getcwd(),

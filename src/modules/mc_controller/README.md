@@ -89,15 +89,17 @@ latch lands here rather than on anything stock.
    ```
    Rename the class, and return your own `name()`.
 
-2. **Add parameters** in `controllers/my_controller_params.c` using
-   `PARAM_DEFINE_FLOAT(MC_MY_GAIN, ...)`, and bind them with
+2. **Add parameters** to `module.yaml`, under the
+   `Multicopter Controller Framework` group, and bind them with
    `DEFINE_PARAMETERS((ParamFloat<px4::params::MC_MY_GAIN>) _param_gain)`.
    Parameter refresh is automatic — `ModuleParams` cascades from the module.
 
+   PX4 no longer scans `.c` files for `PARAM_DEFINE_*`: `px_process_params.py`
+   reads only the generated params directory, which is built from the YAML
+   registered through `MODULE_CONFIG`. A `params.c` here would be ignored
+   silently.
+
 3. **Add `MyController.cpp/.hpp` to `SRCS`** in `controllers/CMakeLists.txt`.
-   Do **not** add the `_params.c` file: `src/lib/parameters/CMakeLists.txt`
-   glob-recurses `src/*params.c` and generates the definitions itself, so
-   compiling it into the library as well is a redefinition error.
 
 4. **Register it** in `controllers/ControllerRegistry.hpp/.cpp`: add an
    `Algorithm` enumerator and one `case`. `-Wswitch` will remind you if you add

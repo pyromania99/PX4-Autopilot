@@ -13,7 +13,7 @@ For example, different ESCs or motors change the optimal tuning gains.
 
 ## 简介
 
-PX4 uses **P**roportional, **I**ntegral, **D**erivative (PID) controllers (these are the most widespread control technique).
+PX4 uses **P**roportional, **I**integral, **D**erivative (PID) controllers (these are the most widespread control technique).
 
 The _QGroundControl_ **PID Tuning** setup provides real-time plots of the vehicle setpoint and response curves.
 The goal of tuning is to set the P/I/D values such that the _Response_ curve matches the _Setpoint_ curve as closely as possible (i.e. a fast response without overshoots).
@@ -112,11 +112,14 @@ The tuning procedure is:
 
 11. Modify the three PID values using the sliders (for roll rate-tuning these affect `MC_ROLLRATE_K`, `MC_ROLLRATE_I`, `MC_ROLLRATE_D`) and observe the step response again.
     The values are saved to the vehicle as soon as the sliders are moved.
+
     ::: info
     The goal is for the _Response_ curve to match the _Setpoint_ curve as closely as possible (i.e. a fast response without overshoots).
 
 :::
+
     The PID values can be adjusted as follows:
+
     - P (proportional) or K gain:
       - increase this for more responsiveness
       - reduce if the response is overshooting and/or oscillating (up to a certain point increasing the D gain also helps).

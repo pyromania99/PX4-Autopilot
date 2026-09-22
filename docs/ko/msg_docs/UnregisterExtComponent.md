@@ -4,23 +4,23 @@ pageClass: is-wide-page
 
 # UnregisterExtComponent (UORB message)
 
-**TOPICS:** unregister_extcomponent
+**TOPICS:** unregister_ext_component
 
 ## Fields
 
-| 명칭                                                         | 형식         | Unit [Frame] | Range/Enum | 설명                                                                     |
-| ---------------------------------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
-| timestamp                                                  | `uint64`   |                                                                  |            | time since system start (microseconds)              |
-| name                                                       | `char[25]` |                                                                  |            | either the mode name, or component name                                |
-| arming_check_id  | `int8`     |                                                                  |            | arming check registration ID (-1 if not registered) |
-| mode_id                               | `int8`     |                                                                  |            | assigned mode ID (-1 if not registered)             |
-| mode_executor_id | `int8`     |                                                                  |            | assigned mode executor ID (-1 if not registered)    |
+| 명칭                                                                                          | 형식         | Unit [Frame] | Range/Enum | 설명                                                                     |
+| ------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                         | `uint64`   |                                                                  |            | time since system start (microseconds)              |
+| <a id="fld_name"></a>name                                                                   | `char[25]` |                                                                  |            | either the mode name, or component name                                |
+| <a id="fld_arming_check_id"></a>arming_check_id   | `int8`     |                                                                  |            | arming check registration ID (-1 if not registered) |
+| <a id="fld_mode_id"></a>mode_id                                        | `int8`     |                                                                  |            | assigned mode ID (-1 if not registered)             |
+| <a id="fld_mode_executor_id"></a>mode_executor_id | `int8`     |                                                                  |            | assigned mode executor ID (-1 if not registered)    |
 
 ## Constants
 
-| 명칭                                                                   | 형식       | Value | 설명 |
-| -------------------------------------------------------------------- | -------- | ----- | -- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0     |    |
+| 명칭                                                                 | 형식       | Value | 설명 |
+| ------------------------------------------------------------------ | -------- | ----- | -- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION | `uint32` | 0     |    |
 
 ## Source Message
 

@@ -55,6 +55,10 @@ AUAV_Differential::AUAV_Differential(const I2CSPIDriverConfig &config) :
 		_cal_range = 60;
 		break;
 
+	case 4: /* AUAV L60D (+- 60 inH20) */
+		_cal_range = 120;
+		break;
+
 	default:
 		_cal_range = 10; /* Default fallback */
 		break;
@@ -84,6 +88,7 @@ void AUAV_Differential::publish_pressure(const float pressure_p, const float tem
 	}
 
 	differential_pressure.temperature = temperature_c;
+	differential_pressure.pitot_temperature = NAN;
 	differential_pressure.error_count = perf_event_count(_comms_errors);
 	_differential_pressure_pub.publish(differential_pressure);
 }
@@ -112,7 +117,7 @@ AUAV::calib_eeprom_addr_t AUAV_Differential::get_calib_eeprom_addr() const
 float AUAV_Differential::process_pressure_dig(const float pressure_dig) const
 {
 	const float pressure_in_h = 1.25f * ((pressure_dig - (1 << 23)) / (1 << 24)) * static_cast<float>(_cal_range);
-	return pressure_in_h * INH_TO_PA;
+	return pressure_in_h * M_INH_TO_PA;
 }
 
 int AUAV_Differential::read_factory_data()
@@ -151,7 +156,7 @@ int AUAV_Differential::read_factory_data()
 	int32_t sensor_type = ((char_high - '0') * 10) + (char_low - '0');
 
 	/* Check if the detected sensor type is valid */
-	if (sensor_type != AUAV_LD_05 && sensor_type != AUAV_LD_10 && sensor_type != AUAV_LD_30) {
+	if (sensor_type != AUAV_LD_05 && sensor_type != AUAV_LD_10 && sensor_type != AUAV_LD_30 && sensor_type != AUAV_LD_60) {
 		return PX4_ERROR;
 	}
 

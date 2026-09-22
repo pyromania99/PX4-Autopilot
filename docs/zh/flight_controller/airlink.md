@@ -26,7 +26,7 @@ AIRLink has two computers and integrated LTE Module:
 ## 产品规格
 
 - **Sensors**
-  - 3x Accelerometers, 3x Gyroscopes, 3x Magnetometers, 3x Pressure sensorss
+  - 3x Accelerometers, 3x Gyroscopes, 3x Magnetometers, 3x Pressure sensors
   - GNSS, Rangefinders, Lidars, Optical Flow, Cameras
   - 3x-redundant IMU
   - Vibration dampening
@@ -59,7 +59,7 @@ AIRLink has two computers and integrated LTE Module:
   - Ethernet 10/100/1000 Native Gigabit
   - WiFi 802.11a/b/g/n/ac, Bluetooth
   - USB 3.0 Type C
-  - 2x Video: 4-Lane MIPI CSI (FPV Camera) and 4-Lane MIPI CSI with HMDI Input (Payload Camera)
+  - 2x Video: 4-Lane MIPI CSI (FPV Camera) and 4-Lane MIPI CSI with HDMI Input (Payload Camera)
 
 - **LTE/5G Connectivity Module**
   - Up to 600 Mbps bandwidth
@@ -71,7 +71,7 @@ AIRLink has two computers and integrated LTE Module:
   - Antenna, 4x4 MIMO
   - Bands: Worldwide
 
-## 购买渠道
+## Where to Buy {#store}
 
 Purchase from the original Sky-Drones Store (worldwide shipping with 1-2 days order processing time):
 
@@ -92,7 +92,7 @@ The standard set contains:
 - 1x FPV camera with CSI cable
 - 1x WiFi antenna with MMCX connector
 - 2x/4x LTE/5G antenna with MMCX connector
-- 1x HDMI to mini HDMI cable1x set of cables (7 cables for all connectors)
+- 1x HDMI to mini HDMI cable, 1x set of cables (7 cables for all connectors)
 
 [AIRLink Telemetry](https://sky-drones.com/sets/airlink-telemetry-set.html) based on the Microhard LAN/IP-based RF micromodule is available as an add-on and is fully compatible with AIRLink.
 
@@ -114,7 +114,7 @@ SmartAP AIRLink's Core edition is intended for medium to high volume production 
 
 ![AIRLink Core](../../assets/flight_controller/airlink/airlink-core.jpg)
 
-| 参数                  | AIRLink Enterprise                                                          | AIRLink Core                                                                                        |
+| Parameter           | AIRLink Enterprise                                                          | AIRLink Core                                                                                        |
 | ------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Enclosure           | Aluminum, with integrated heatsink and fan mounting option. | External heatsink or reasonable power dissipation should be provided by the design. |
 | 尺寸                  | L103 x W61 x H37 mm                                                         | L100 x W57 x H22 mm                                                                                 |
@@ -331,7 +331,7 @@ For PPM receivers please use RC Connector PPM pin located on the left side of th
 
 ## Outputs
 
-AIRLink has 16 PWM ouputs. Main outputs 1-8 and connected to IO MCU. AUX outputs 1-8 are connected to FMU.
+AIRLink has 16 PWM outputs. Main outputs 1-8 and connected to IO MCU. AUX outputs 1-8 are connected to FMU.
 
 | 输出    | Timer    | Channel   |
 | ----- | -------- | --------- |
@@ -355,7 +355,7 @@ It is pre-built and automatically installed by _QGroundControl_ when appropriate
 
 To [build PX4](../dev_setup/building_px4.md) for this target:
 
-```
+```sh
 make sky-drones_smartap-airlink
 ```
 

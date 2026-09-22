@@ -9,7 +9,7 @@
 
 위성 통신에는 다음의 요소들이 필요합니다.
 
-- A [RockBlock 9603 Iridium Satellite Modem](https://www.iridium.com/products/ground-control-rockblock-9603/) module connected to a Pixhawk flashed with the PX4 Autopilot.
+- A [RockBlock 9603 Iridium Satellite Modem](https://www.iridium.com/products/rockblock-9603) module connected to a Pixhawk flashed with the PX4 Autopilot.
 - Ubuntu Linux를 실행하는 메시지 릴레이 서버
 - A ground station computer running _QGroundControl_ on Ubuntu Linux
 
@@ -51,20 +51,20 @@ The details of the [connectors](https://docs.groundcontrol.com/iot/rockblock/spe
 To [switch between the two antennas modes](https://docs.groundcontrol.com/iot/rockblock/user-manual/9603-atenna-mode) the position of a small RF link cable needs to changed.
 외부 안테나를 사용하는 경우 모듈 손상을 방지하기 위해 안테나의 전원을 켜기 전에 항상 안테나가 모듈에 연결되어 있는 지 확인하십시오.
 
-모듈의 기본 보드 속도는 19200입니다. However, the PX4 _iridiumsbd_ driver requires a baud rate of 115200 so it needs to be changed using the [AT commands](https://www.groundcontrol.com/wp-content/uploads/2022/02/IRDM_ISU_ATCommandReferenceMAN0009_Rev2.0_ATCOMM_Oct2012.pdf).
+모듈의 기본 보드 속도는 19200입니다. However, the PX4 _iridiumsbd_ driver requires a baud rate of 115200 so it needs to be changed using the [AT commands](https://docs.groundcontrol.com/iot/rockblock/user-manual/at-commands).
 
 1. Connect to the module with using a 19200/8-N-1 setting and check if the communication is working using the command: `AT`.
    The response should be: `OK`.
 
 2. baudrate 속도를 변경합니다.
 
-   ```
+   ```sh
    AT+IPR=9
    ```
 
 3. 이제 115200/8-N-1 설정을 사용하여 모델에 다시 연결하고 다음을 사용하여 설정을 저장합니다.
 
-   ```
+   ```sh
    AT&W0
    ```
 
@@ -78,7 +78,7 @@ To [switch between the two antennas modes](https://docs.groundcontrol.com/iot/ro
 :::info
 If the configuration parameter is not available in _QGroundControl_ then you may need to [add the driver to the firmware](../peripherals/serial_configuration.md#parameter_not_in_firmware):
 
-```
+```txt
 drivers/telemetry/iridiumsbd
 ```
 

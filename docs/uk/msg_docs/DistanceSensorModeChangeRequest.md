@@ -4,21 +4,21 @@ pageClass: is-wide-page
 
 # DistanceSensorModeChangeRequest (UORB message)
 
-**TOPICS:** distance_sensormode_changerequest
+**TOPICS:** distance_sensor_mode_change_request
 
 ## Fields
 
-| Назва                                                    | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
-| -------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                                                | `uint64` |                                                                  |            | time since system start (microseconds) |
-| request_on_off | `uint8`  |                                                                  |            | request to disable/enable the distance sensor             |
+| Назва                                                                                   | Тип      | Unit [Frame] | Range/Enum | Опис                                                      |
+| --------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                     | `uint64` |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_request_on_off"></a>request_on_off | `uint8`  |                                                                  |            | request to disable/enable the distance sensor             |
 
 ## Constants
 
-| Назва                                                        | Тип     | Значення | Опис |
-| ------------------------------------------------------------ | ------- | -------- | ---- |
-| <a href="#REQUEST_OFF"></a> REQUEST_OFF | `uint8` | 0        |      |
-| <a href="#REQUEST_ON"></a> REQUEST_ON   | `uint8` | 1        |      |
+| Назва                                                      | Тип     | Значення | Опис |
+| ---------------------------------------------------------- | ------- | -------- | ---- |
+| <a id="#REQUEST_OFF"></a> REQUEST_OFF | `uint8` | 0        |      |
+| <a id="#REQUEST_ON"></a> REQUEST_ON   | `uint8` | 1        |      |
 
 ## Source Message
 

@@ -27,9 +27,9 @@ This flight controller is [manufacturer supported](../flight_controller/autopilo
   - F-RAM Cypress MF25V02-G 256-Kbit nonvolatile memory (Flash memory that performs as fast as RAM)
 
 - Sensors:
-  - [Bosch BMI088](https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi088/) 3-axis accelerometer/gyroscope (internally vibration dampened)
-  - [Invensense ICM-20602](https://invensense.tdk.com/products/motion-tracking/6-axis/icm-20602/) 3-axis accelerometer/gyroscope
-  - [Invensense ICM-20948](https://invensense.tdk.com/products/motion-tracking/9-axis/icm-20948/) 3-axis accelerometer/gyroscope/magnetometer
+  - [Bosch BMI088](https://www.bosch-sensortec.com/en/products/motion-sensors/imus/bmi088/) 3-axis accelerometer/gyroscope (internally vibration dampened)
+  - [Invensense ICM-20602](https://www.invensense.tdk.com/en-us/products/motion-tracking/6-axis/icm-20602) 3-axis accelerometer/gyroscope
+  - [Invensense ICM-20948](https://www.invensense.tdk.com/en-us/products/9-axis/icm-20948) 3-axis accelerometer/gyroscope/magnetometer
   - Infineon DPS310 barometer - [Discontinued](https://www.infineon.com/products/sensor/pressure-sensors/pressure-sensors-for-iot) (So smooth and NO more light sensitivity)
 
 - Interfaces:
@@ -73,14 +73,14 @@ To [build PX4](../dev_setup/building_px4.md) for this target:
 make mro_ctrl-zero-f7
 ```
 
-## Debug Ports
+## Debug Ports {#debug_port}
 
 ### Console Port
 
 The [PX4 System Console](../debug/system_console.md) runs on `USART7` using the pins listed below.
 This is a standard serial pinout, designed to connect to a [3.3V FTDI](https://www.digikey.com/en/products/detail/TTL-232R-3V3/768-1015-ND/1836393) cable (5V tolerant).
 
-| mRo control zero f7 |             | FTDI |
+| mRo control zero f7 |             | FTDI |                  |
 | ------------------- | ----------- | ---- | ---------------- |
 | 17                  | USART7 Tx   | 5    | FTDI RX (yellow) |
 | 19                  | USART7 Rx   | 4    | FTDI TX (orange) |

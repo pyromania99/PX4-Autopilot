@@ -4,16 +4,16 @@ pageClass: is-wide-page
 
 # RtlTimeEstimate (UORB message)
 
-**TOPICS:** rtl_timeestimate
+**TOPICS:** rtl_time_estimate
 
 ## Fields
 
-| 参数名                                                          | 类型        | Unit [Frame] | Range/Enum | 描述                                                                                                                                    |
-| ------------------------------------------------------------ | --------- | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| timestamp                                                    | `uint64`  |                                                                  |            | time since system start (microseconds)                                                                             |
-| valid                                                        | `bool`    |                                                                  |            | Flag indicating whether the time estiamtes are valid                                                                                  |
-| time_estimate                           | `float32` | s                                                                |            | Estimated time for RTL                                                                                                                |
-| safe_time_estimate | `float32` | s                                                                |            | Same as time_estimate, but with safety factor and safety margin included (factor\*t + margin) |
+| 参数名                                                                                             | 类型        | Unit [Frame] | Range/Enum | 描述                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                                             | `uint64`  |                                                                  |            | time since system start (microseconds)                                                                             |
+| <a id="fld_valid"></a>valid                                                                     | `bool`    |                                                                  |            | Flag indicating whether the time estiamtes are valid                                                                                  |
+| <a id="fld_time_estimate"></a>time_estimate                                | `float32` | s                                                                |            | Estimated time for RTL                                                                                                                |
+| <a id="fld_safe_time_estimate"></a>safe_time_estimate | `float32` | s                                                                |            | Same as time_estimate, but with safety factor and safety margin included (factor\*t + margin) |
 
 ## Source Message
 

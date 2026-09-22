@@ -827,7 +827,7 @@ TEST(CommandFrontEndTest, ResetIntegralsOnLevelChangeDisarmAndGround)
 	EXPECT_TRUE(fe.update(landed, t + 16000, pubs).reset_integrals);
 }
 
-TEST(CommandFrontEndTest, TerminationProducesNoCommand)
+TEST(CommandFrontEndTest, ControlDisabledProducesNoCommand)
 {
 	param_control_autosave(false);
 	ParamHarness h;
@@ -838,9 +838,10 @@ TEST(CommandFrontEndTest, TerminationProducesNoCommand)
 	uint64_t t = 10000000;
 	auto state = flyingState(t);
 
+	// flag_control_termination_enabled was removed upstream (5d2cec97f1); the surviving
+	// "control is off" condition is flag_control_rates_enabled, left false by the zero-init.
 	vehicle_control_mode_s mode{};
 	mode.flag_armed = true;
-	mode.flag_control_termination_enabled = true;
 	fe.setControlMode(mode);
 
 	CommandFrontEnd::Publications pubs;

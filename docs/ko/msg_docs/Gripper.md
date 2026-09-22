@@ -10,17 +10,17 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 명칭        | 형식       | Unit [Frame] | Range/Enum | 설명                              |
-| --------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
-| timestamp | `uint64` |                                                                  |            |                                 |
-| command   | `int8`   |                                                                  |            | Commanded state for the gripper |
+| 명칭                                  | 형식       | Unit [Frame] | Range/Enum | 설명                              |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- | ---------- | ------------------------------- |
+| <a id="fld_timestamp"></a>timestamp | `uint64` |                                                                  |            |                                 |
+| <a id="fld_command"></a>command     | `int8`   |                                                                  |            | Commanded state for the gripper |
 
 ## Constants
 
-| 명칭                                                                   | 형식     | Value | 설명 |
-| -------------------------------------------------------------------- | ------ | ----- | -- |
-| <a href="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0     |    |
-| <a href="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1     |    |
+| 명칭                                                                 | 형식     | Value | 설명 |
+| ------------------------------------------------------------------ | ------ | ----- | -- |
+| <a id="#COMMAND_GRAB"></a> COMMAND_GRAB       | `int8` | 0     |    |
+| <a id="#COMMAND_RELEASE"></a> COMMAND_RELEASE | `int8` | 1     |    |
 
 ## Source Message
 

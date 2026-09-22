@@ -8,36 +8,36 @@ pageClass: is-wide-page
 
 ## Fields
 
-| Назва                            | Тип         | Unit [Frame] | Range/Enum | Опис                                                                              |
-| -------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------- |
-| timestamp                        | `uint64`    |                                                                  |            | time since system start (microseconds)                         |
-| protocol                         | `uint8`     |                                                                  |            |                                                                                   |
-| device                           | `uint8`     |                                                                  |            |                                                                                   |
-| mode                             | `uint8`     |                                                                  |            |                                                                                   |
-| band                             | `int8`      |                                                                  |            | Band number (0-23), negative values indicate frequency mode    |
-| channel                          | `int8`      |                                                                  |            | Channel number (0-15), negative values indicate frequency mode |
-| frequency                        | `uint16`    |                                                                  |            | Frequency in MHz, zero indicates unknown                                          |
-| band_letter | `uint8`     |                                                                  |            | Band letter as ASCII                                                              |
-| band_name   | `uint8[12]` |                                                                  |            | Band name in ASCII without null termination                                       |
-| power_level | `int8`      |                                                                  |            | Current power level (0-15), negative values indicate unknown   |
-| power_label | `uint8[4]`  |                                                                  |            | Current power label in ASCII without null termination                             |
+| Назва                                                        | Тип         | Unit [Frame] | Range/Enum | Опис                                                                              |
+| ------------------------------------------------------------ | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                          | `uint64`    |                                                                  |            | time since system start (microseconds)                         |
+| <a id="fld_protocol"></a>protocol                            | `uint8`     |                                                                  |            |                                                                                   |
+| <a id="fld_device"></a>device                                | `uint8`     |                                                                  |            |                                                                                   |
+| <a id="fld_mode"></a>mode                                    | `uint8`     |                                                                  |            |                                                                                   |
+| <a id="fld_band"></a>band                                    | `int8`      |                                                                  |            | Band number (0-23), negative values indicate frequency mode    |
+| <a id="fld_channel"></a>channel                              | `int8`      |                                                                  |            | Channel number (0-15), negative values indicate frequency mode |
+| <a id="fld_frequency"></a>frequency                          | `uint16`    |                                                                  |            | Frequency in MHz, zero indicates unknown                                          |
+| <a id="fld_band_letter"></a>band_letter | `uint8`     |                                                                  |            | Band letter as ASCII                                                              |
+| <a id="fld_band_name"></a>band_name     | `uint8[12]` |                                                                  |            | Band name in ASCII without null termination                                       |
+| <a id="fld_power_level"></a>power_level | `int8`      |                                                                  |            | Current power level (0-15), negative values indicate unknown   |
+| <a id="fld_power_label"></a>power_label | `uint8[4]`  |                                                                  |            | Current power label in ASCII without null termination                             |
 
 ## Constants
 
-| Назва                                                                                                                                                   | Тип     | Значення | Опис                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ----------------------------------------- |
-| <a href="#BAND_NAME_LENGTH"></a> BAND_NAME_LENGTH                                                             | `uint8` | 12       |                                           |
-| <a href="#POWER_LABEL_LENGTH"></a> POWER_LABEL_LENGTH                                                         | `uint8` | 4        |                                           |
-| <a href="#PROTOCOL_NONE"></a> PROTOCOL_NONE                                                                                        | `uint8` | 0        | No protocol is detected, usually an error |
-| <a href="#PROTOCOL_SMART_AUDIO_V1"></a> PROTOCOL_SMART_AUDIO_V1                          | `uint8` | 10       |                                           |
-| <a href="#PROTOCOL_SMART_AUDIO_V2"></a> PROTOCOL_SMART_AUDIO_V2                          | `uint8` | 20       |                                           |
-| <a href="#PROTOCOL_SMART_AUDIO_V2_1"></a> PROTOCOL_SMART_AUDIO_V2_1 | `uint8` | 21       |                                           |
-| <a href="#PROTOCOL_TRAMP"></a> PROTOCOL_TRAMP                                                                                      | `uint8` | 100      |                                           |
-| <a href="#DEVICE_UNKNOWN"></a> DEVICE_UNKNOWN                                                                                      | `uint8` | 0        |                                           |
-| <a href="#DEVICE_PEAK_THOR_T67"></a> DEVICE_PEAK_THOR_T67                                | `uint8` | 20       |                                           |
-| <a href="#DEVICE_RUSH_MAX_SOLO"></a> DEVICE_RUSH_MAX_SOLO                                | `uint8` | 40       |                                           |
-| <a href="#MODE_NORMAL"></a> MODE_NORMAL                                                                                            | `uint8` | 0        |                                           |
-| <a href="#MODE_PIT"></a> MODE_PIT                                                                                                  | `uint8` | 1        |                                           |
+| Назва                                                                                                                                                 | Тип     | Значення | Опис                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ----------------------------------------- |
+| <a id="#BAND_NAME_LENGTH"></a> BAND_NAME_LENGTH                                                             | `uint8` | 12       |                                           |
+| <a id="#POWER_LABEL_LENGTH"></a> POWER_LABEL_LENGTH                                                         | `uint8` | 4        |                                           |
+| <a id="#PROTOCOL_NONE"></a> PROTOCOL_NONE                                                                                        | `uint8` | 0        | No protocol is detected, usually an error |
+| <a id="#PROTOCOL_SMART_AUDIO_V1"></a> PROTOCOL_SMART_AUDIO_V1                          | `uint8` | 10       |                                           |
+| <a id="#PROTOCOL_SMART_AUDIO_V2"></a> PROTOCOL_SMART_AUDIO_V2                          | `uint8` | 20       |                                           |
+| <a id="#PROTOCOL_SMART_AUDIO_V2_1"></a> PROTOCOL_SMART_AUDIO_V2_1 | `uint8` | 21       |                                           |
+| <a id="#PROTOCOL_TRAMP"></a> PROTOCOL_TRAMP                                                                                      | `uint8` | 100      |                                           |
+| <a id="#DEVICE_UNKNOWN"></a> DEVICE_UNKNOWN                                                                                      | `uint8` | 0        |                                           |
+| <a id="#DEVICE_PEAK_THOR_T67"></a> DEVICE_PEAK_THOR_T67                                | `uint8` | 20       |                                           |
+| <a id="#DEVICE_RUSH_MAX_SOLO"></a> DEVICE_RUSH_MAX_SOLO                                | `uint8` | 40       |                                           |
+| <a id="#MODE_NORMAL"></a> MODE_NORMAL                                                                                            | `uint8` | 0        |                                           |
+| <a id="#MODE_PIT"></a> MODE_PIT                                                                                                  | `uint8` | 1        |                                           |
 
 ## Source Message
 

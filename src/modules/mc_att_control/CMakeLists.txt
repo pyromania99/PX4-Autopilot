@@ -41,9 +41,12 @@ px4_add_module(
 	SRCS
 		mc_att_control_main.cpp
 		mc_att_control.hpp
+	MODULE_CONFIG
+		mc_att_control_params.yaml
 	DEPENDS
 		AttitudeControl
 		mathlib
 		McManualMapping
 		px4_work_queue
+		Sticks
 	)

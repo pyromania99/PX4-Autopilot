@@ -8,18 +8,18 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 명칭                                    | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
-| ------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                             | `uint64`    |                                                                  |            | time since system start (microseconds) |
-| cmd                                   | `char[100]` |                                                                  |            |                                                           |
-| strlen                                | `uint32`    |                                                                  |            |                                                           |
-| request_sequence | `uint32`    |                                                                  |            |                                                           |
+| 명칭                                                                     | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
+| ---------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`    |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_cmd"></a>cmd                                                | `char[100]` |                                                                  |            |                                                           |
+| <a id="fld_strlen"></a>strlen                                          | `uint32`    |                                                                  |            |                                                           |
+| <a id="fld_request_sequence"></a>request_sequence | `uint32`    |                                                                  |            |                                                           |
 
 ## Constants
 
-| 명칭                                                         | 형식       | Value | 설명 |
-| ---------------------------------------------------------- | -------- | ----- | -- |
-| <a href="#MAX_STRLEN"></a> MAX_STRLEN | `uint32` | 100   |    |
+| 명칭                                                       | 형식       | Value | 설명 |
+| -------------------------------------------------------- | -------- | ----- | -- |
+| <a id="#MAX_STRLEN"></a> MAX_STRLEN | `uint32` | 100   |    |
 
 ## Source Message
 

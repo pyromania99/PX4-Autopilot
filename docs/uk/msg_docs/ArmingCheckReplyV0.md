@@ -4,40 +4,40 @@ pageClass: is-wide-page
 
 # ArmingCheckReplyV0 (UORB message)
 
-**TOPICS:** arming_checkreplyv0
+**TOPICS:** arming_check_reply_v0
 
 ## Fields
 
-| Назва                                                                                                               | Тип          | Unit [Frame] | Range/Enum | Опис                                                                     |
-| ------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
-| timestamp                                                                                                           | `uint64`     |                                                                  |            | time since system start (microseconds)                |
-| request_id                                                                                     | `uint8`      |                                                                  |            |                                                                          |
-| registration_id                                                                                | `uint8`      |                                                                  |            |                                                                          |
-| health_component_index                                                    | `uint8`      |                                                                  |            | HEALTH_COMPONENT_INDEX_\*                           |
-| health_component_is_present                          | `bool`       |                                                                  |            |                                                                          |
-| health_component_warning                                                  | `bool`       |                                                                  |            |                                                                          |
-| health_component_error                                                    | `bool`       |                                                                  |            |                                                                          |
-| can_arm_and_run                                      | `bool`       |                                                                  |            | whether arming is possible, and if it's a navigation mode, if it can run |
-| num_events                                                                                     | `uint8`      |                                                                  |            |                                                                          |
-| events                                                                                                              | `EventV0[5]` |                                                                  |            |                                                                          |
-| mode_req_angular_velocity                            | `bool`       |                                                                  |            |                                                                          |
-| mode_req_attitude                                                         | `bool`       |                                                                  |            |                                                                          |
-| mode_req_local_alt                                   | `bool`       |                                                                  |            |                                                                          |
-| mode_req_local_position                              | `bool`       |                                                                  |            |                                                                          |
-| mode_req_local_position_relaxed | `bool`       |                                                                  |            |                                                                          |
-| mode_req_global_position                             | `bool`       |                                                                  |            |                                                                          |
-| mode_req_mission                                                          | `bool`       |                                                                  |            |                                                                          |
-| mode_req_home_position                               | `bool`       |                                                                  |            |                                                                          |
-| mode_req_prevent_arming                              | `bool`       |                                                                  |            |                                                                          |
-| mode_req_manual_control                              | `bool`       |                                                                  |            |                                                                          |
+| Назва                                                                                                                                                               | Тип          | Unit [Frame] | Range/Enum | Опис                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------ |
+| <a id="fld_timestamp"></a>timestamp                                                                                                                                 | `uint64`     |                                                                  |            | time since system start (microseconds)                |
+| <a id="fld_request_id"></a>request_id                                                                                                          | `uint8`      |                                                                  |            |                                                                          |
+| <a id="fld_registration_id"></a>registration_id                                                                                                | `uint8`      |                                                                  |            |                                                                          |
+| <a id="fld_health_component_index"></a>health_component_index                                                             | `uint8`      |                                                                  |            | HEALT&#x48;_&#x43;OMPONENT_INDEX_\*                 |
+| <a id="fld_health_component_is_present"></a>health_component_is_present                              | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_health_component_warning"></a>health_component_warning                                                         | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_health_component_error"></a>health_component_error                                                             | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_can_arm_and_run"></a>can_arm_and_run                                                      | `bool`       |                                                                  |            | whether arming is possible, and if it's a navigation mode, if it can run |
+| <a id="fld_num_events"></a>num_events                                                                                                          | `uint8`      |                                                                  |            |                                                                          |
+| <a id="fld_events"></a>events                                                                                                                                       | `EventV0[5]` |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_angular_velocity"></a>mode_req_angular_velocity                                  | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_attitude"></a>mode_req_attitude                                                                       | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_local_alt"></a>mode_req_local_alt                                                | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_local_position"></a>mode_req_local_position                                      | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_local_position_relaxed"></a>mode_req_local_position_relaxed | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_global_position"></a>mode_req_global_position                                    | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_mission"></a>mode_req_mission                                                                         | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_home_position"></a>mode_req_home_position                                        | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_prevent_arming"></a>mode_req_prevent_arming                                      | `bool`       |                                                                  |            |                                                                          |
+| <a id="fld_mode_req_manual_control"></a>mode_req_manual_control                                      | `bool`       |                                                                  |            |                                                                          |
 
 ## Constants
 
-| Назва                                                                                                                                  | Тип      | Значення | Опис |
-| -------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------- | ---- |
-| <a href="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                                                   | `uint32` | 0        |      |
-| <a href="#HEALTH_COMPONENT_INDEX_NONE"></a> HEALTH_COMPONENT_INDEX_NONE | `uint8`  | 0        |      |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH                                            | `uint8`  | 4        |      |
+| Назва                                                                                                                                | Тип      | Значення | Опис |
+| ------------------------------------------------------------------------------------------------------------------------------------ | -------- | -------- | ---- |
+| <a id="#MESSAGE_VERSION"></a> MESSAGE_VERSION                                                                   | `uint32` | 0        |      |
+| <a id="#HEALTH_COMPONENT_INDEX_NONE"></a> HEALTH_COMPONENT_INDEX_NONE | `uint8`  | 0        |      |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH                                            | `uint8`  | 4        |      |
 
 ## Source Message
 

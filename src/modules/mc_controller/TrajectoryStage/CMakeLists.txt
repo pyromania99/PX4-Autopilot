@@ -31,12 +31,11 @@
 #
 ############################################################################
 
-# trajectory_stage_params.c is deliberately NOT listed below. src/lib/parameters
-# generates the definitions from a directory scan, so compiling it here as well would be a
-# redefinition error. What makes the scan reach this directory at all is the
-# px4_add_library() call itself: it appends CMAKE_CURRENT_SOURCE_DIR to PX4_MODULE_PATHS,
-# and the scanner is non-recursive. A params file in a directory with no px4_add_library()
-# or px4_add_module() is silently ignored.
+# There is no params.c here. PX4 no longer scans .c files for PARAM_DEFINE_*:
+# px_process_params.py is pointed only at the generated params directory, which is built
+# from the YAML files registered via MODULE_CONFIG. The MC_OL_* gains this stage reads
+# are therefore declared in src/modules/mc_controller/module.yaml along with the rest of
+# the framework's parameters.
 px4_add_library(McControllerTrajectoryStage
 	TrajectoryStage.cpp
 	TrajectoryStage.hpp

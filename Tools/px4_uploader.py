@@ -78,6 +78,21 @@ except ImportError as e:
     print("\nInstall it with: python -m pip install pyserial", file=sys.stderr)
     sys.exit(1)
 
+# pyserial's POSIX backend implements flush()/reset_input_buffer()/
+# reset_output_buffer() with raw termios.tcdrain()/tcflush() and does NOT wrap
+# their failures. On a vanished device (errno 5 EIO, e.g. the USB CDC node being
+# torn down during a reboot-to-bootloader re-enumeration) those raise a raw
+# termios.error -- which derives directly from Exception, NOT from OSError. It
+# therefore slips past `except (OSError, serial.SerialException)`. Include it
+# explicitly so these surface as ConnectionError and the identify/reboot retry
+# loops can recover instead of crashing. termios is POSIX-only.
+try:
+    import termios
+
+    _PORT_ERRORS: tuple = (OSError, serial.SerialException, termios.error)
+except ImportError:
+    _PORT_ERRORS = (OSError, serial.SerialException)
+
 
 # =============================================================================
 # Logging Configuration
@@ -111,6 +126,47 @@ def setup_logging(verbose: bool = False, debug: bool = False) -> None:
     # Also check environment variable
     if os.environ.get("PX4_UPLOADER_DEBUG", "").lower() in ("1", "true", "yes"):
         logger.setLevel(logging.DEBUG)
+
+
+def _present_ports() -> Optional[set]:
+    """Return the set of serial-port device paths currently present.
+
+    Used to detect USB re-enumeration (a board leaving the bootloader makes its
+    CDC device disappear and the application device appear). Returns None if
+    enumeration itself fails, so callers can tell "no devices" (empty set) apart
+    from "couldn't enumerate" and avoid a false re-enumeration signal.
+    """
+    try:
+        return {p.device for p in serial.tools.list_ports.comports()}
+    except Exception as e:
+        logger.debug(f"Port enumeration failed: {e}")
+        return None
+
+
+_BY_ID_DIR = "/dev/serial/by-id"
+
+
+def _by_id_name(port: str) -> str:
+    """Prefer the stable /dev/serial/by-id name for a port, when one exists.
+
+    A by-id name says which device it is; ttyACM numbers are handed out in plug
+    order and mean nothing to a reader with more than one board on the bus.
+    Linux only -- elsewhere, and for ports with no symlink, the path is
+    returned unchanged.
+    """
+    if port.startswith(_BY_ID_DIR):
+        return port
+
+    try:
+        real = os.path.realpath(port)
+        for name in sorted(os.listdir(_BY_ID_DIR)):
+            link = os.path.join(_BY_ID_DIR, name)
+            if os.path.realpath(link) == real:
+                return link
+    except OSError as e:
+        logger.debug(f"Cannot resolve by-id name for {port}: {e}")
+
+    return port
 
 
 # =============================================================================
@@ -198,10 +254,10 @@ class BootloaderCommand(IntEnum):
     GET_OTP = 0x2A  # rev4+, get a word from OTP area
     GET_SN = 0x2B  # rev4+, get a word from SN area
     GET_CHIP = 0x2C  # rev5+, get chip version
-    SET_BOOT_DELAY = 0x2D  # rev5+, set boot delay
     GET_CHIP_DES = 0x2E  # rev5+, get chip description in ASCII
     GET_VERSION = 0x2F  # rev5+, get bootloader version in ASCII
     REBOOT = 0x30
+    VERIFY_SIG = 0x39  # verify signature of programmed image (secure boot)
     CHIP_FULL_ERASE = 0x40  # Full erase of flash, rev6+
 
 
@@ -256,9 +312,11 @@ PX4_USB_IDS: list[tuple[int, int, str]] = [
     (0x2DAE, 0x1058, "Cube Orange"),
     (0x2DAE, 0x1016, "Cube Black"),
     (0x2DAE, 0x1011, "Cube Yellow"),
+    (0x2DAE, 0x2001, "NWBlue Pro H757"),
     (0x0483, 0x5740, "STMicroelectronics Virtual COM Port"),  # Generic ST bootloader
     (0x1209, 0x5740, "Generic STM32"),
     (0x1209, 0x5741, "ArduPilot"),
+    (0x3185, 0x003C, "ARK FMU v6s"),
     (0x3185, 0x0039, "ARK FMU v6x"),
     (0x3185, 0x003A, "ARK Pi6x"),
     (0x3185, 0x003B, "ARK FPV"),
@@ -294,6 +352,7 @@ class Firmware:
     image: bytes = field(init=False)
     image_size: int = field(init=False)
     image_maxsize: int = field(init=False)
+    image_signed: bool = field(init=False)
     description: dict = field(init=False)
 
     def __post_init__(self):
@@ -331,6 +390,7 @@ class Firmware:
         self.board_revision = self.description.get("board_revision", 0)
         self.image_size = self.description["image_size"]
         self.image_maxsize = self.description["image_maxsize"]
+        self.image_signed = bool(self.description.get("image_signed", False))
 
         # Decompress image
         try:
@@ -520,14 +580,31 @@ class SerialTransport:
 
     def flush(self) -> None:
         """Flush output buffer."""
-        if self._port is not None:
+        if self._port is None:
+            return
+        # tcdrain() can raise termios.error (NOT an OSError subclass) if the
+        # device disappeared mid-flush — common right after a reboot-to-
+        # bootloader when the USB CDC node is being torn down and re-enumerated.
+        try:
             self._port.flush()
+        except _PORT_ERRORS as e:
+            raise ConnectionError(
+                f"Flush failed: {e}", port=self.port_name, operation="flush"
+            )
 
     def reset_buffers(self) -> None:
         """Reset input and output buffers."""
-        if self._port is not None:
+        if self._port is None:
+            return
+        try:
             self._port.reset_input_buffer()
             self._port.reset_output_buffer()
+        except _PORT_ERRORS as e:
+            raise ConnectionError(
+                f"Buffer reset failed: {e}",
+                port=self.port_name,
+                operation="reset_buffers",
+            )
 
     def set_baudrate(self, baudrate: int) -> None:
         """Change baud rate.
@@ -545,6 +622,17 @@ class SerialTransport:
             except (serial.SerialException, NotImplementedError) as e:
                 logger.debug(f"Cannot change baudrate: {e}")
                 raise
+
+    def rebind(self, port_name: str) -> None:
+        """Point this transport at a different serial device.
+
+        After a reboot-to-bootloader the USB CDC node re-enumerates under a new
+        path (app product string -> bootloader product string). Callers close
+        the old path, wait for re-enumeration, then rebind to the new one.
+        """
+        self.close()
+        logger.debug(f"Rebinding serial transport {self.port_name} -> {port_name}")
+        self.port_name = port_name
 
     @property
     def chartime(self) -> float:
@@ -1148,84 +1236,158 @@ class BootloaderProtocol:
         else:
             self.verify_read(firmware, progress_callback)
 
-    def set_boot_delay(self, delay_ms: int) -> None:
-        """Set boot delay in flash (v5+).
+    def verify_signature(self, image_signed: bool) -> None:
+        """Ask the bootloader to verify the signature of the programmed image.
+
+        Only call this for signed firmware. VERIFY_SIG is an unknown opcode to
+        bootloaders without secure boot; sending it right before REBOOT can
+        desync the BOOT handshake and leave the board stuck in the bootloader,
+        so we skip it when there is no signature to check.
+
+        Returns if the bootloader verifies the image or lacks secure boot
+        (INVALID); raises if it reports a bad signature.
 
         Args:
-            delay_ms: Boot delay in milliseconds
-        """
-        if self.bl_rev < 5:
-            logger.warning("Boot delay requires bootloader v5+")
-            return
-
-        self._send_command(BootloaderCommand.SET_BOOT_DELAY, struct.pack("b", delay_ms))
-        self._get_sync()
-        logger.info(f"Boot delay set to {delay_ms}ms")
-
-    def reboot(self) -> None:
-        """Reboot into the application.
+            image_signed: True if the firmware metadata claimed the image
+                is signed. Used only to upgrade the "bootloader doesn't
+                support secure boot" warning into an error: a signed image
+                being uploaded to a non-secure bootloader is a config
+                mismatch worth flagging loudly.
 
         Raises:
-            ProtocolError: If reboot fails (v3+ validates first flash word)
+            ProtocolError: If the bootloader reports the signature is bad,
+                or if a signed image was sent to a non-secure bootloader.
         """
-        logger.info("Rebooting to application")
-        self._send_command(BootloaderCommand.REBOOT)
+        logger.info("Verifying image signature")
+        self._send_command(BootloaderCommand.VERIFY_SIG)
         self.transport.flush()
 
-        # v3+ can report failure if first flash word is invalid
-        if self.bl_rev >= 3:
-            try:
-                self._get_sync()
-            except TimeoutError:
-                # Timeout is expected - board is rebooting
-                pass
+        # ed25519 verification over a multi-megabyte image runs a full
+        # SHA-512 over every byte in flash, which on a slow-clocked H7
+        # bootloader with monocypher can comfortably exceed the default
+        # serial timeout. Give the response a generous window.
+        try:
+            insync = self.transport.recv(1, timeout=3.0)
+        except TimeoutError:
+            # Old bootloader from before VERIFY_SIG existed: no response,
+            # just silently dropped the byte. Treat as "no secure boot
+            # support" and continue. The downside is that a signed image
+            # going to a really old bootloader won't be caught here.
+            logger.debug("VERIFY_SIG timed out; assuming pre-secureboot bootloader")
+            return
 
-    def send_reboot_commands(
-        self, baudrates: list[int], use_protocol_splitter: bool = False
-    ) -> bool:
-        """Send reboot commands to try to enter bootloader.
+        if insync[0] != BootloaderResponse.INSYNC:
+            raise ProtocolError(
+                f"Expected INSYNC (0x{BootloaderResponse.INSYNC:02X}), "
+                f"got 0x{insync[0]:02X}",
+                port=self.transport.port_name,
+                operation="verify_signature",
+            )
 
-        Tries MAVLink and NSH reboot commands at various baud rates.
+        result = self.transport.recv(1)
+        if result[0] == BootloaderResponse.OK:
+            logger.info("Signature verification passed")
+            return
+        if result[0] == BootloaderResponse.FAILED:
+            if image_signed:
+                msg = ("Signature does not verify against any trusted key "
+                       "in the bootloader.")
+            else:
+                msg = ("Secure bootloader rejected an unsigned image. "
+                       "Build with CONFIG_BOARD_SECUREBOOT or flash a "
+                       "non-secure bootloader.")
+            raise ProtocolError(msg, port=self.transport.port_name)
+        if result[0] == BootloaderResponse.INVALID:
+            if image_signed:
+                raise ProtocolError(
+                    "Image is marked signed but the bootloader has no "
+                    "secure boot support.",
+                    port=self.transport.port_name,
+                )
+            logger.debug("Bootloader has no secure boot; skipping verification")
+            return
 
-        Args:
-            baudrates: List of baud rates to try
-            use_protocol_splitter: Use protocol splitter framing
+        raise ProtocolError(
+            f"Unexpected VERIFY_SIG response: 0x{result[0]:02X}",
+            port=self.transport.port_name,
+            operation="verify_signature",
+        )
+
+    # Reboot confirmation tuning
+    REBOOT_ATTEMPTS = 3
+    REBOOT_REENUM_TIMEOUT = 5.0
+
+    def reboot(self) -> bool:
+        """Reboot into the application and confirm the board left the bootloader.
+
+        Two independent signals confirm a reboot:
+          1. ACK: the in-tree bootloader (bl.c, PROTO_BOOT) sends INSYNC+OK
+             *before* it jumps (sync_response() then delay(100) then
+             jump_to_app()), so an ack means it is booting.
+          2. USB re-enumeration: if there is no ack, the board may still have
+             rebooted silently, or it may have dropped the REBOOT byte. We watch
+             the serial-port list; if our port disappears or a new one appears
+             the board rebooted, otherwise we resend REBOOT.
 
         Returns:
-            True if commands were sent, False if no more baud rates to try
+            True if the board rebooted, False if it appears stuck in the
+            bootloader after every attempt.
+
+        Raises:
+            ProtocolError: If the bootloader reports a bad image (v3+).
         """
-        for baudrate in baudrates:
+        logger.info("Rebooting to application")
+        ports_before = _present_ports() or set()
+
+        for _ in range(self.REBOOT_ATTEMPTS):
             try:
-                self.transport.set_baudrate(baudrate)
-            except (serial.SerialException, NotImplementedError):
-                continue
-
-            logger.info(f"Sending reboot command at {baudrate} baud")
-
-            def send(data: bytes) -> None:
-                if use_protocol_splitter:
-                    self._send_protocol_splitter_frame(data)
-                else:
-                    self.transport.send(data)
-
-            try:
+                self._send_command(BootloaderCommand.REBOOT)
                 self.transport.flush()
-                send(self.MAVLINK_REBOOT_ID0)
-                send(self.MAVLINK_REBOOT_ID1)
-                send(self.NSH_INIT)
-                send(self.NSH_REBOOT_BL)
-                send(self.NSH_INIT)
-                send(self.NSH_REBOOT)
-                self.transport.flush()
-            except Exception as e:
-                logger.debug(f"Error sending reboot: {e}")
-                continue
 
-            return True
+                # v3+ acks (INSYNC+OK) before jumping; v2 has no ack.
+                if self.bl_rev >= 3 and self._reboot_acked():
+                    logger.info("Reboot acknowledged")
+                    return True
+            except ConnectionError:
+                # Port vanished mid-command -> the board already left the BL.
+                logger.info("Rebooted (USB re-enumerated)")
+                return True
 
+            # No ack: confirm via USB re-enumeration, else resend.
+            if self._wait_for_reenumeration(ports_before):
+                logger.info("Rebooted (USB re-enumerated)")
+                return True
+            logger.debug("No reboot detected; resending REBOOT")
+
+        logger.warning("Board did not reboot; power-cycle to boot")
         return False
 
-    def _send_protocol_splitter_frame(self, data: bytes) -> None:
+    def _reboot_acked(self) -> bool:
+        """Return True if the bootloader acked the REBOOT (INSYNC+OK)."""
+        try:
+            self._get_sync()
+            return True
+        except TimeoutError:
+            return False
+
+    def _wait_for_reenumeration(self, ports_before: set) -> bool:
+        """Watch for the board's serial device to go away / a new one to appear.
+
+        Returns True if the port set changes within REBOOT_REENUM_TIMEOUT (the
+        board rebooted), False if nothing changes (likely stuck in bootloader).
+        """
+        our_port = self.transport.port_name
+        deadline = time.monotonic() + self.REBOOT_REENUM_TIMEOUT
+        while time.monotonic() < deadline:
+            time.sleep(0.1)
+            now = _present_ports()
+            if now is None:
+                continue  # transient enumeration failure; try again
+            if our_port not in now or (now - ports_before):
+                return True
+        return False
+
+    def send_protocol_splitter_frame(self, data: bytes) -> None:
         """Send data with protocol splitter framing.
 
         Header format:
@@ -1282,6 +1444,7 @@ class PortDetector:
 
     def __init__(self):
         self.platform = sys.platform
+        self._is_windows = self.platform.startswith("win") or self.platform == "cygwin"
 
     def detect_ports(self) -> list[str]:
         """Detect available PX4-compatible serial ports.
@@ -1307,8 +1470,19 @@ class PortDetector:
                 ports.discard(port)
         result.extend(sorted(ports))
 
-        logger.info(f"Detected {len(result)} potential ports: {result}")
-        return result
+        # Report by-id names, and collapse the duplicates that leaves: one
+        # device is routinely matched both by a by-id pattern and by the
+        # /dev/ttyACM* catch-all.
+        named = []
+        seen = set()
+        for port in result:
+            port = _by_id_name(port)
+            if port not in seen:
+                seen.add(port)
+                named.append(port)
+
+        logger.info(f"Detected {len(named)} potential ports: {named}")
+        return named
 
     def _detect_by_vid_pid(self) -> list[str]:
         """Detect ports by USB Vendor/Product ID.
@@ -1343,6 +1517,14 @@ class PortDetector:
         elif self.platform == "darwin":
             patterns = self.MACOS_PATTERNS
         elif self.platform.startswith("win") or self.platform == "cygwin":
+            try:
+                detected_ports = [
+                    port_info.device for port_info in serial.tools.list_ports.comports()
+                ]
+                if detected_ports:
+                    return detected_ports
+            except Exception as e:
+                logger.debug(f"Windows COM port detection failed: {e}")
             patterns = self.WINDOWS_PATTERNS
         else:
             patterns = []
@@ -1356,6 +1538,13 @@ class PortDetector:
 
     def expand_patterns(self, patterns: list[str]) -> list[str]:
         """Expand glob patterns to actual port paths.
+
+        On POSIX, exact paths are only included when the device node currently
+        exists — otherwise a reboot-to-bootloader that swaps the CDC product
+        string would leave us retrying a vanished path forever while the
+        bootloader sits on a sibling by-id name. Windows COM names are not
+        filesystem paths (os.path.exists("COM10") is false even when the port
+        is present), so they are passed through unchecked.
 
         Args:
             patterns: List of port paths or glob patterns
@@ -1371,10 +1560,12 @@ class PortDetector:
                     ports.extend(matches)
                 else:
                     logger.debug(f"Pattern matched no ports: {pattern}")
-            else:
+            elif self._is_windows or os.path.exists(pattern):
                 ports.append(pattern)
+            else:
+                logger.debug(f"Exact port not present: {pattern}")
 
-        return list(set(ports))
+        return list(dict.fromkeys(_by_id_name(port) for port in ports))
 
 
 # =============================================================================
@@ -1569,7 +1760,6 @@ class UploaderConfig:
     baud_flightstack: list[int] = field(default_factory=lambda: [57600])
     force: bool = False
     force_erase: bool = False
-    boot_delay: Optional[int] = None
     use_protocol_splitter: bool = False
     retry_count: int = 3
     windowed: bool = False
@@ -1621,24 +1811,19 @@ class Uploader:
                 print(f"Flash: {kwargs['flash_size']} bytes")
                 print(f"Windowed mode: {'yes' if kwargs.get('windowed') else 'no'}")
 
-    def upload(self, firmware_paths: list[str]) -> bool:
-        """Upload firmware to connected board.
+    def load_firmwares(self, firmware_paths: list[str]) -> list[Firmware]:
+        """Load and validate firmware files once, up front.
 
-        Args:
-            firmware_paths: List of firmware file paths to try
-
-        Returns:
-            True if upload successful
+        Loading decompresses the whole image, so it must not happen inside the
+        wait-for-bootloader retry loop.
 
         Raises:
-            UploadError: If upload fails
+            FirmwareError: If no firmware file could be loaded
         """
-        # Load all firmware files
         firmwares = []
         for path in firmware_paths:
             try:
-                fw = Firmware(path)
-                firmwares.append(fw)
+                firmwares.append(Firmware(path))
             except FirmwareError as e:
                 logger.error(f"Failed to load {path}: {e}")
                 if len(firmware_paths) == 1:
@@ -1646,7 +1831,20 @@ class Uploader:
 
         if not firmwares:
             raise FirmwareError("No valid firmware files")
+        return firmwares
 
+    def upload(self, firmwares: list[Firmware]) -> bool:
+        """Upload firmware to connected board.
+
+        Args:
+            firmwares: Loaded firmware images (see load_firmwares)
+
+        Returns:
+            True if upload successful
+
+        Raises:
+            UploadError: If upload fails
+        """
         # Determine ports to try
         if self.config.port:
             patterns = self.config.port.split(",")
@@ -1666,7 +1864,8 @@ class Uploader:
         last_error = None
         for port in ports:
             try:
-                return self._upload_to_port(port, firmwares)
+                if self._upload_to_port(port, firmwares):
+                    return True
             except BoardMismatchError as e:
                 logger.warning(f"Board mismatch on {port}: {e}")
                 last_error = e
@@ -1676,7 +1875,10 @@ class Uploader:
                 last_error = e
                 continue
             except UploadError as e:
-                logger.error(f"Upload failed on {port}: {e}")
+                # Don't log here: we re-raise and the top-level handler
+                # in main() will print the error message. Logging here
+                # too produces duplicate user-facing output.
+                logger.debug(f"Upload failed on {port}: {e}")
                 last_error = e
                 raise
 
@@ -1729,6 +1931,16 @@ class Uploader:
         finally:
             transport.close()
 
+    # After reboot-to-bootloader the USB CDC device disappears and comes back
+    # under a different product string (app vs bootloader). Give it this long
+    # to re-enumerate before giving up on this attempt.
+    #
+    # The reboot itself is immediate, so this only has to cover re-enumeration.
+    # Waiting longer is actively harmful: a board sits in its bootloader for
+    # BOOTLOADER_DELAY (3s on some boards, 5s on most) before it jumps to the
+    # application, and time spent here is time not spent trying other ports.
+    REBOOT_REDISCOVER_TIMEOUT = 1.0
+
     def _try_identify(
         self, transport: SerialTransport, protocol: BootloaderProtocol
     ) -> bool:
@@ -1752,10 +1964,39 @@ class Uploader:
                 port=transport.port_name,
             )
             return True
-        except (ProtocolError, TimeoutError):
+        except (ProtocolError, TimeoutError, ConnectionError):
             pass
 
-        # Try rebooting at each baud rate
+        # Running app (or noise): ask it to reboot into the bootloader, then
+        # re-discover whatever CDC node comes back. Reopening the original path
+        # is wrong for USB — the by-id name changes with the product string.
+        ports_before = _present_ports() or set()
+        if not self._reboot_flightstack_to_bootloader(transport, protocol):
+            return False
+
+        return self._identify_after_reboot(transport, protocol, ports_before)
+
+    def _reboot_flightstack_to_bootloader(
+        self, transport: SerialTransport, protocol: BootloaderProtocol
+    ) -> bool:
+        """Send MAVLink/NSH reboot-to-bootloader on the open flight-stack port.
+
+        Sends at every configured flight-stack baud rate: on a real UART a
+        write at the wrong baud succeeds silently, so a completed send says
+        nothing about which rate the flight stack listens at. Stops early only
+        when the port vanishes — the board is already rebooting and there is
+        no device left to address at other bauds.
+
+        Returns True if at least one reboot command sequence was sent.
+        """
+        sent = False
+
+        def send(data: bytes) -> None:
+            if self.config.use_protocol_splitter:
+                protocol.send_protocol_splitter_frame(data)
+            else:
+                transport.send(data)
+
         for baud in self.config.baud_flightstack:
             if not self.config.json_output:
                 print(
@@ -1768,59 +2009,132 @@ class Uploader:
             except Exception:
                 continue
 
-            # Send reboot commands multiple times to increase reliability
-            # The board might be busy and miss the first command
-            for attempt in range(3):
+            # Multiple sends: the board might be busy and miss the first command.
+            for _ in range(3):
                 try:
                     transport.reset_buffers()
-
-                    # Send MAVLink reboot-to-bootloader commands
-                    # Send broadcast (0/0) first, then targeted (1/0)
-                    transport.send(protocol.MAVLINK_REBOOT_ID0)
-                    transport.send(protocol.MAVLINK_REBOOT_ID1)
+                    # Broadcast (0/0) first, then targeted (1/0)
+                    send(protocol.MAVLINK_REBOOT_ID0)
+                    send(protocol.MAVLINK_REBOOT_ID1)
                     transport.flush()
-
-                    # Give MAVLink stack time to process
                     time.sleep(0.1)
-
-                    # Send NSH reboot-to-bootloader command
-                    transport.send(protocol.NSH_INIT)
+                    send(protocol.NSH_INIT)
                     time.sleep(0.05)
-                    transport.send(protocol.NSH_REBOOT_BL)
+                    send(protocol.NSH_REBOOT_BL)
                     transport.flush()
-
                     time.sleep(0.2)
-                except Exception:
-                    pass
+                    sent = True
+                except (ConnectionError, OSError, serial.SerialException) as e:
+                    # Port often vanishes mid-flush once the board starts rebooting —
+                    # that is success for our purposes.
+                    logger.debug(f"Reboot send ended with {e}")
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+                    return True
 
-            # Wait for reboot - give the board time to process and restart
-            time.sleep(0.5)
+        try:
             transport.close()
-            time.sleep(0.5)
+        except Exception:
+            pass
+        return sent
 
-            # Reopen at bootloader baud rate and try to identify
-            try:
-                transport.set_baudrate(self.config.baud_bootloader)
-                transport.open()
-            except Exception:
-                continue
+    def _candidate_ports_after_reboot(
+        self, previous_port: str, ports_before: set
+    ) -> list[str]:
+        """Ports to try after a reboot-to-bootloader re-enumeration.
 
-            # Try to identify multiple times - board may take time to enter bootloader
-            for identify_attempt in range(5):
+        Candidates come from the caller's --port patterns (or auto-detect),
+        plus any node that appeared since the reboot was sent — when the
+        caller pinned an exact app path, that path vanished along with the
+        app's product string and the newly appeared node is the only lead.
+
+        Order: newly appeared nodes first, the path we rebooted off of last.
+        That path usually vanishes, but when the OS re-uses the tty number it
+        IS the bootloader, so it stays as a fallback rather than being
+        excluded. Nodes naming the same device (a by-id symlink and its
+        target) are collapsed.
+        """
+        if self.config.port:
+            ports = self.port_detector.expand_patterns(self.config.port.split(","))
+        else:
+            ports = self.port_detector.detect_ports()
+
+        now = _present_ports()
+        appeared = (now - ports_before) if now is not None else set()
+        known = {os.path.realpath(port) for port in ports}
+        for port in sorted(appeared):
+            if os.path.realpath(port) not in known:
+                ports.append(_by_id_name(port))
+
+        def rank(port: str) -> int:
+            if port in appeared or os.path.realpath(port) in appeared:
+                return 0
+            if port == previous_port:
+                return 2
+            return 1
+
+        ports.sort(key=rank)
+
+        unique = []
+        seen = set()
+        for port in ports:
+            real = os.path.realpath(port)
+            if real not in seen:
+                seen.add(real)
+                unique.append(port)
+        return unique
+
+    def _identify_after_reboot(
+        self,
+        transport: SerialTransport,
+        protocol: BootloaderProtocol,
+        ports_before: set,
+    ) -> bool:
+        """Wait for USB re-enumeration, then identify the bootloader on the new node."""
+        previous_port = transport.port_name
+        transport.set_baudrate(self.config.baud_bootloader)
+        deadline = time.monotonic() + self.REBOOT_REDISCOVER_TIMEOUT
+
+        while time.monotonic() < deadline:
+            candidates = self._candidate_ports_after_reboot(
+                previous_port, ports_before
+            )
+            for port in candidates:
+                try:
+                    transport.rebind(port)
+                    transport.open()
+                except ConnectionError:
+                    continue
+
+                # One attempt per node per pass: a wrong device costs a full
+                # sync timeout, and the outer loop retries every node anyway.
                 try:
                     protocol.identify()
-                    self._print_message(
-                        "board",
-                        board_type=protocol.board_type,
-                        board_rev=protocol.board_rev,
-                        protocol_version=protocol.bl_rev,
-                        port=transport.port_name,
-                    )
-                    return True
-                except (ProtocolError, TimeoutError):
-                    # Board may still be rebooting, wait a bit and retry
-                    time.sleep(0.3)
+                except (ProtocolError, TimeoutError, ConnectionError):
+                    # Still coming up, or not a bootloader on this node
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+                    continue
 
+                self._print_message(
+                    "board",
+                    board_type=protocol.board_type,
+                    board_rev=protocol.board_rev,
+                    protocol_version=protocol.bl_rev,
+                    port=transport.port_name,
+                )
+                return True
+
+            time.sleep(0.15)
+
+        logger.debug(
+            f"No bootloader found within {self.REBOOT_REDISCOVER_TIMEOUT}s after reboot "
+            f"(left {previous_port})"
+        )
         return False
 
     def _select_firmware(
@@ -1924,9 +2238,17 @@ class Uploader:
         # Verify
         protocol.verify(firmware, progress_callback=progress.update_verify)
 
-        # Set boot delay if requested
-        if self.config.boot_delay is not None:
-            protocol.set_boot_delay(self.config.boot_delay)
+        # Only verify signed firmware: VERIFY_SIG before REBOOT can desync the
+        # BOOT handshake and leave the board stuck in the bootloader.
+        if firmware.image_signed:
+            # Progress bar leaves the cursor mid-line; break to a fresh line so
+            # the verify output doesn't clobber it.
+            if not self.config.json_output:
+                print()
+                print("Verifying image signature...", end="", flush=True)
+            protocol.verify_signature(firmware.image_signed)
+            if not self.config.json_output:
+                print(" passed")
 
         # Reboot and show summary
         protocol.reboot()
@@ -2010,9 +2332,6 @@ Examples:
         help="Force full chip erase (v6+ bootloader)",
     )
     parser.add_argument(
-        "--boot-delay", type=int, help="Boot delay in milliseconds to store in flash"
-    )
-    parser.add_argument(
         "--use-protocol-splitter-format",
         action="store_true",
         help="Use protocol splitter framing for reboot commands",
@@ -2068,7 +2387,6 @@ Examples:
         baud_flightstack=baud_flightstack,
         force=args.force,
         force_erase=args.force_erase,
-        boot_delay=args.boot_delay,
         use_protocol_splitter=args.use_protocol_splitter_format,
         windowed=args.windowed,
         noninteractive=args.noninteractive or args.noninteractive_json,
@@ -2083,10 +2401,19 @@ Examples:
     uploader = Uploader(config)
 
     try:
+        firmwares = uploader.load_firmwares(args.firmware)
+    except UploadError as e:
+        if args.noninteractive_json:
+            print(json.dumps({"type": "error", "message": str(e)}))
+        else:
+            print(f"\nError: {e}", file=sys.stderr)
+        return 1
+
+    try:
         # Keep trying until we find a board or user interrupts
         while True:
             try:
-                if uploader.upload(args.firmware):
+                if uploader.upload(firmwares):
                     return 0
             except BoardMismatchError:
                 # No suitable firmware for this board

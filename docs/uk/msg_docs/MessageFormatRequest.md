@@ -4,21 +4,21 @@ pageClass: is-wide-page
 
 # MessageFormatRequest (UORB message)
 
-**TOPICS:** message_formatrequest
+**TOPICS:** message_format_request
 
 ## Fields
 
-| Назва                                 | Тип        | Unit [Frame] | Range/Enum | Опис                                                                                                                                                                       |
-| ------------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| timestamp                             | `uint64`   |                                                                  |            | time since system start (microseconds)                                                                                                                  |
-| protocol_version | `uint16`   |                                                                  |            | Must be set to LATEST_PROTOCOL_VERSION. Do not change this field, it must be the first field after the timestamp |
-| topic_name       | `char[50]` |                                                                  |            | Наприклад, /fmu/in/vehicle_command                                                                                                                    |
+| Назва                                                                  | Тип        | Unit [Frame] | Range/Enum | Опис                                                                                                                                                                       |
+| ---------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                                    | `uint64`   |                                                                  |            | time since system start (microseconds)                                                                                                                  |
+| <a id="fld_protocol_version"></a>protocol_version | `uint16`   |                                                                  |            | Must be set to LATEST_PROTOCOL_VERSION. Do not change this field, it must be the first field after the timestamp |
+| <a id="fld_topic_name"></a>topic_name             | `char[50]` |                                                                  |            | Наприклад, /fmu/in/vehicle_command                                                                                                                    |
 
 ## Constants
 
-| Назва                                                                                                     | Тип      | Значення | Опис                                                                                                                                                |
-| --------------------------------------------------------------------------------------------------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a href="#LATEST_PROTOCOL_VERSION"></a> LATEST_PROTOCOL_VERSION | `uint16` | 1        | Current version of this protocol. Increase this whenever the MessageFormatRequest or MessageFormatResponse changes. |
+| Назва                                                                                                   | Тип      | Значення | Опис                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a id="#LATEST_PROTOCOL_VERSION"></a> LATEST_PROTOCOL_VERSION | `uint16` | 1        | Current version of this protocol. Increase this whenever the MessageFormatRequest or MessageFormatResponse changes. |
 
 ## Source Message
 

@@ -138,7 +138,7 @@ private:
 
 	hrt_abstime _last_run{0};
 
-	static constexpr float _kAirspeedFilterTimeConstant{1.f};
+	static constexpr hrt_abstime _kAirspeedFilterTimeConstant{1_s};
 	AlphaFilter<float> _airspeed_filter_for_torque_scaling{_kAirspeedFilterTimeConstant};
 
 	float _airspeed_scaling{1.0f};
@@ -213,7 +213,8 @@ private:
 		(ParamFloat<px4::params::TRIM_ROLL>) _param_trim_roll,
 		(ParamFloat<px4::params::TRIM_YAW>) _param_trim_yaw,
 
-		(ParamInt<px4::params::FW_SPOILERS_MAN>) _param_fw_spoilers_man
+		(ParamInt<px4::params::FW_SPOILERS_MAN>) _param_fw_spoilers_man,
+		(ParamInt<px4::params::FW_FLAPS_MAN>) _param_fw_flaps_man
 	)
 
 	RateControl _rate_control; ///< class for rate control calculations

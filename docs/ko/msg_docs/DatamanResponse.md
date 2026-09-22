@@ -8,26 +8,26 @@ pageClass: is-wide-page
 
 ## Fields
 
-| 명칭                                | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
-| --------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
-| timestamp                         | `uint64`    |                                                                  |            | time since system start (microseconds) |
-| client_id    | `uint8`     |                                                                  |            |                                                           |
-| request_type | `uint8`     |                                                                  |            | id/read/write/clear                                       |
-| item                              | `uint8`     |                                                                  |            | dm_item_t       |
-| index                             | `uint32`    |                                                                  |            |                                                           |
-| data                              | `uint8[56]` |                                                                  |            |                                                           |
-| status                            | `uint8`     |                                                                  |            |                                                           |
+| 명칭                                                             | 형식          | Unit [Frame] | Range/Enum | 설명                                                        |
+| -------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------- | --------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                            | `uint64`    |                                                                  |            | time since system start (microseconds) |
+| <a id="fld_client_id"></a>client_id       | `uint8`     |                                                                  |            |                                                           |
+| <a id="fld_request_type"></a>request_type | `uint8`     |                                                                  |            | id/read/write/clear                                       |
+| <a id="fld_item"></a>item                                      | `uint8`     |                                                                  |            | dm_item_t       |
+| <a id="fld_index"></a>index                                    | `uint32`    |                                                                  |            |                                                           |
+| <a id="fld_data"></a>data                                      | `uint8[56]` |                                                                  |            |                                                           |
+| <a id="fld_status"></a>status                                  | `uint8`     |                                                                  |            |                                                           |
 
 ## Constants
 
-| 명칭                                                                                                                                     | 형식      | Value | 설명 |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- | -- |
-| <a href="#STATUS_SUCCESS"></a> STATUS_SUCCESS                                                                     | `uint8` | 0     |    |
-| <a href="#STATUS_FAILURE_ID_ERR"></a> STATUS_FAILURE_ID_ERR             | `uint8` | 1     |    |
-| <a href="#STATUS_FAILURE_NO_DATA"></a> STATUS_FAILURE_NO_DATA           | `uint8` | 2     |    |
-| <a href="#STATUS_FAILURE_READ_FAILED"></a> STATUS_FAILURE_READ_FAILED   | `uint8` | 3     |    |
-| <a href="#STATUS_FAILURE_WRITE_FAILED"></a> STATUS_FAILURE_WRITE_FAILED | `uint8` | 4     |    |
-| <a href="#STATUS_FAILURE_CLEAR_FAILED"></a> STATUS_FAILURE_CLEAR_FAILED | `uint8` | 5     |    |
+| 명칭                                                                                                                                   | 형식      | Value | 설명 |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------- | ----- | -- |
+| <a id="#STATUS_SUCCESS"></a> STATUS_SUCCESS                                                                     | `uint8` | 0     |    |
+| <a id="#STATUS_FAILURE_ID_ERR"></a> STATUS_FAILURE_ID_ERR             | `uint8` | 1     |    |
+| <a id="#STATUS_FAILURE_NO_DATA"></a> STATUS_FAILURE_NO_DATA           | `uint8` | 2     |    |
+| <a id="#STATUS_FAILURE_READ_FAILED"></a> STATUS_FAILURE_READ_FAILED   | `uint8` | 3     |    |
+| <a id="#STATUS_FAILURE_WRITE_FAILED"></a> STATUS_FAILURE_WRITE_FAILED | `uint8` | 4     |    |
+| <a id="#STATUS_FAILURE_CLEAR_FAILED"></a> STATUS_FAILURE_CLEAR_FAILED | `uint8` | 5     |    |
 
 ## Source Message
 

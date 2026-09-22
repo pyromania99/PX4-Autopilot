@@ -4,24 +4,24 @@ pageClass: is-wide-page
 
 # GpsInjectData (UORB message)
 
-**TOPICS:** gps_injectdata
+**TOPICS:** gps_inject_data
 
 ## Fields
 
-| 参数名                            | 类型           | Unit [Frame] | Range/Enum | 描述                                                                        |
-| ------------------------------ | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| timestamp                      | `uint64`     |                                                                  |            | time since system start (microseconds)                 |
-| device_id | `uint32`     |                                                                  |            | unique device ID for the sensor that does not change between power cycles |
-| len                            | `uint16`     |                                                                  |            | length of data                                                            |
-| flags                          | `uint8`      |                                                                  |            | LSB: 1=fragmented                                         |
-| data                           | `uint8[300]` |                                                                  |            | data to write to GPS device (RTCM message)             |
+| 参数名                                                      | 类型           | Unit [Frame] | Range/Enum | 描述                                                                        |
+| -------------------------------------------------------- | ------------ | ---------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| <a id="fld_timestamp"></a>timestamp                      | `uint64`     |                                                                  |            | time since system start (microseconds)                 |
+| <a id="fld_device_id"></a>device_id | `uint32`     |                                                                  |            | unique device ID for the sensor that does not change between power cycles |
+| <a id="fld_len"></a>len                                  | `uint16`     |                                                                  |            | length of data                                                            |
+| <a id="fld_flags"></a>flags                              | `uint8`      |                                                                  |            | LSB: 1=fragmented across multiple uORB publications       |
+| <a id="fld_data"></a>data                                | `uint8[300]` |                                                                  |            | data chunk to write to GPS device (RTCM message)       |
 
 ## Constants
 
-| 参数名                                                                                         | 类型      | 值 | 描述 |
-| ------------------------------------------------------------------------------------------- | ------- | - | -- |
-| <a href="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 8 |    |
-| <a href="#MAX_INSTANCES"></a> MAX_INSTANCES                            | `uint8` | 2 |    |
+| 参数名                                                                                       | 类型      | 值 | 描述 |
+| ----------------------------------------------------------------------------------------- | ------- | - | -- |
+| <a id="#ORB_QUEUE_LENGTH"></a> ORB_QUEUE_LENGTH | `uint8` | 8 |    |
+| <a id="#MAX_INSTANCES"></a> MAX_INSTANCES                            | `uint8` | 2 |    |
 
 ## Source Message
 
@@ -36,8 +36,8 @@ uint64 timestamp		# time since system start (microseconds)
 uint32 device_id                # unique device ID for the sensor that does not change between power cycles
 
 uint16 len                       # length of data
-uint8 flags                     # LSB: 1=fragmented
-uint8[300] data                 # data to write to GPS device (RTCM message)
+uint8 flags                     # LSB: 1=fragmented across multiple uORB publications
+uint8[300] data                 # data chunk to write to GPS device (RTCM message)
 
 uint8 ORB_QUEUE_LENGTH = 8
 

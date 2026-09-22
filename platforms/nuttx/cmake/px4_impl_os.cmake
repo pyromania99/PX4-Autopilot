@@ -78,6 +78,7 @@ function(px4_os_add_flags)
 		${PX4_SOURCE_DIR}/platforms/nuttx/NuttX/nuttx/arch/${CONFIG_ARCH}/src/common
 
 		${PX4_SOURCE_DIR}/platforms/nuttx/NuttX/apps/include
+		${PX4_SOURCE_DIR}/platforms/nuttx/NuttX/include
 	)
 
 
@@ -91,6 +92,7 @@ function(px4_os_add_flags)
 
 	if(NOT CONFIG_LIB_TFLM)
 		list(APPEND cxx_flags -nostdinc++) # prevent using the toolchain's std c++ library if building for anything else than TFLM
+		list(APPEND cxx_flags -include${PX4_SOURCE_DIR}/platforms/nuttx/NuttX/include/cxx/abs_overloads.hpp)
 	endif()
 
 	foreach(flag ${cxx_flags})
@@ -214,6 +216,12 @@ function(px4_os_prebuild_targets)
 
 	if(EXISTS ${PX4_BOARD_DIR}/nuttx-config/${PX4_BOARD_LABEL})
 		set(NUTTX_CONFIG "${PX4_BOARD_LABEL}" CACHE INTERNAL "NuttX config" FORCE)
+	elseif("${PX4_BOARD_LABEL}" MATCHES "^bootloader" AND EXISTS ${PX4_BOARD_DIR}/nuttx-config/bootloader)
+		# Bootloader variants (e.g. bootloader_secureboot) share the
+		# minimal "bootloader" NuttX config; falling back to "nsh"
+		# would silently pull in the full app-style NuttX subsystem
+		# (full heap, fs, net) and overflow the bootloader sector.
+		set(NUTTX_CONFIG "bootloader" CACHE INTERNAL "NuttX config" FORCE)
 	else()
 		set(NUTTX_CONFIG "nsh" CACHE INTERNAL "NuttX config" FORCE)
 	endif()

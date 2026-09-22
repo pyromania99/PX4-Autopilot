@@ -12,7 +12,6 @@ prove it works. Nothing here needs me — every command is reproducible.
 ```
 controllers/MyController.hpp        # class declaration
 controllers/MyController.cpp        # YOUR MATH
-controllers/my_controller_params.c  # your gains as MC_MY_* parameters
 ```
 
 Start by copying the template, which is a working (if crude) full-stack controller:
@@ -30,7 +29,8 @@ sed -i 's/TemplateController/MyController/g; s/"template"/"mine"/' MyController.
 |---|---|
 | `controllers/ControllerRegistry.hpp` | add `MyLaw = 4` to `enum class Algorithm` |
 | `controllers/ControllerRegistry.cpp` | add `case Algorithm::MyLaw: return new MyController(parent);` |
-| `controllers/CMakeLists.txt` | add `MyController.cpp` to `SRCS` (**not** `my_controller_params.c` — `src/lib/parameters` globs `src/*params.c` and generates it) |
+| `controllers/CMakeLists.txt` | add `MyController.cpp` to `SRCS` |
+| `module.yaml` | declare your `MC_MY_*` gains (PX4 no longer scans `.c` files for `PARAM_DEFINE_*`) |
 | `module.yaml` | add `4: My law` under the `MC_CTRL_ALG` enum |
 
 `-Wswitch` will fail the build if you add the enumerator and forget the case.
