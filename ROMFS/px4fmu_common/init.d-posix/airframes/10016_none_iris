@@ -284,15 +284,21 @@ param set-default MC_EIG_TRQ_MAX 3.843
 # 25 = 1 (default) | 8 (system identification) | 16 (high rate), which logs
 # sensor_combined, vehicle_angular_velocity, vehicle_rates_setpoint,
 # vehicle_torque_setpoint and actuator_motors unthrottled.
-# 27 = 1 (default) | 2 (estimator replay) | 8 (system identification) | 16 (high rate).
 #
-# Bit 2 was added 2026-08-08 for the *_groundtruth topics: logged_topics.cpp:243-246 adds
-# them in the SITL/EKF-replay block, and without it there is no way to ask whether the
-# ESTIMATE degrades under spin - which is one of the few remaining candidate mechanisms
-# for the divergence above ~7 rad/s, and is not testable from estimator output alone.
-# The old gz x500 logs had them only because they ran SDLOG_PROFILE 131 (which sets bit 2);
-# every Pegasus log so far has been blind to it.
-param set-default SDLOG_PROFILE 27
+# THIS WAS 27 UNTIL 2026-09-23. The +2 (estimator replay) was added on 2026-08-08 for the
+# *_groundtruth topics, on the belief that logged_topics.cpp only added them inside the
+# EKF-replay block. That is no longer true and arguably never was: the SITL block adds
+# them unconditionally, and after the trim on the same date it adds them FIRST, so ground
+# truth no longer depends on the profile at all.
+#
+# Turning +2 back on now costs more than it did: that block carries every estimator*
+# topic at 100 Hz, which is over a hundred subscriptions against a MAX_TOPICS_NUM of 255.
+# It is what overflowed the table after the upstream merge and silently dropped
+# vehicle_local_position_groundtruth from every log. Use 27 only when EKF internals are
+# the subject, and check the boot log for "Too many subscriptions" when you do.
+#
+# Raw IMU and the vibration metrics are +64 (sensor comparison), also opt-in.
+param set-default SDLOG_PROFILE 25
 
 # Position gains. XY are already in acceleration units and transfer directly.
 # Z: the prototype's kp_z=15 N/m and kd_z=8 N/(m/s) divided by the REAL vehicle
