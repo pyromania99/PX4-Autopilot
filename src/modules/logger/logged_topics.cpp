@@ -102,7 +102,12 @@ void LoggedTopics::add_default_topics()
 
 	// External vision pose - kept deliberately: it is an input to the estimator and
 	// the only pose source that does not come from the EKF itself.
-	add_optional_topic("vehicle_visual_odometry", 30);
+	//
+	// UNTHROTTLED on purpose. EKF2_EV_DELAY is calibrated by cross-correlating this
+	// against the gyro (notes/HARDWARE_READINESS.md 2b), and the answer is of order
+	// 10 ms, so a 30 ms log interval cannot resolve it. The bridge publishes at
+	// ~119 Hz, which costs a fraction of what sensor_gyro_fifo did.
+	add_optional_topic("vehicle_visual_odometry");
 
 	// --- control chain ----------------------------------------------------------
 	add_optional_topic("mc_controller_status", 20);
