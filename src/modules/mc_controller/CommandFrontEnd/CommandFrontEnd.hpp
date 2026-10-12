@@ -113,6 +113,9 @@ public:
 	/// Non-const: TakeoffHandling::getTakeoffState() is not a const method.
 	TakeoffState takeoffState() { return _takeoff.getTakeoffState(); }
 
+	/// [rad] Current slewed tilt limit (MPC_TILTMAX_LND -> MPC_TILTMAX_AIR), for takeoff_status.
+	float tiltLimit() const { return _tilt_limit_slew_rate.getState(); }
+
 protected:
 	void updateParams() override;
 
@@ -124,6 +127,10 @@ private:
 	void buildBodyRateCommand(const mc_ctrl::ControllerState &state, Publications &publications);
 
 	mc_ctrl::ControllerCommand _command{};
+
+	/// Held between position samples: see the limits block in buildTrajectoryCommand().
+	float _tilt_limit_cached{NAN};
+	float _speed_up_cached{NAN};
 	mc_ctrl::ControlLevel _previous_level{mc_ctrl::ControlLevel::None};
 
 	vehicle_control_mode_s _vcm{};

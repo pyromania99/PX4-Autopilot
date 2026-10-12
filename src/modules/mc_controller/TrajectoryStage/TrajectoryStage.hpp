@@ -61,14 +61,20 @@
  * Z defaults genuinely differ. Only the integrator gains belong to this class, because
  * the integrator is new and has no per-law history to preserve.
  *
- * THE INTEGRATOR integrates POSITION error, not velocity error. That differs from stock
- * mc_pos_control deliberately: stock is a cascade whose position loop generates a velocity
- * setpoint, so a standing position offset shows up as a velocity error and integrating
- * velocity error corrects it. Here `pos_d` multiplies (command.velocity_sp -
- * state.velocity) directly, with no internally generated velocity setpoint, so at a steady
- * offset the velocity error is zero and integrating it would do nothing. Integrating
- * position error also self-disables on velocity-only axes, which is correct: ALTCTL
- * commands no XY position, so there is no XY hold target to trim.
+ * THE INTEGRATOR integrates the error against the EQUIVALENT VELOCITY SETPOINT, as stock
+ * mc_pos_control does. These laws are written as pos_p*e_p + pos_d*(v_ff - v), which is
+ * algebraically pos_d*(v_sp - v) with v_sp = v_ff + (pos_p/pos_d)*e_p - the same cascade
+ * stock runs - and limitVelocitySetpoint() already builds that v_sp. Integrating
+ * (v_sp - v) after the limit therefore trims a standing position offset on a hold axis
+ * (there it is (pos_p/pos_d)*e_p) AND a standing rate error on a velocity-only axis.
+ *
+ * It used to integrate position error, which zeroed the term on every velocity-only axis.
+ * ALTCTL and POSCTL send a vertical velocity with no z position whenever the throttle stick
+ * is off centre, so the integrator was held at zero exactly while the pilot was trying to
+ * climb or descend, and restarted from zero at every stick release. On the 2026-09-24 spin
+ * flights, with hover thrust at the 0.5 fallback against a real 0.37, full stick-down
+ * produced 0.02 m/s of descent. The gains MC_OL_XY_I / MC_OL_Z_I therefore have stock's
+ * units and meaning (MPC_XY_VEL_I_ACC / MPC_Z_VEL_I_ACC), not their old per-metre ones.
  */
 
 #pragma once
@@ -90,7 +96,7 @@ public:
 	/**
 	 * Stage 1: commanded setpoint -> desired NED acceleration.
 	 *
-	 * Per-axis PD on whatever the flight mode actually commanded, plus the position-error
+	 * Per-axis PD on whatever the flight mode actually commanded, plus the velocity-error
 	 * integral, bounded by what the tilt limit can deliver laterally. Caches the setpoints
 	 * fillLocalPositionSetpoint() reports and marks the stage valid.
 	 *
@@ -119,8 +125,8 @@ public:
 	 * saturates low.
 	 */
 	matrix::Vector3f computeThrustSetpoint(const mc_ctrl::ControllerState &state,
-			const mc_ctrl::ControllerCommand &command,
-			const matrix::Vector3f &acceleration_sp);
+					       const mc_ctrl::ControllerCommand &command,
+					       const matrix::Vector3f &acceleration_sp);
 
 	/**
 	 * The heading a heading-referenced attitude setpoint must be anchored on, taken from
@@ -190,8 +196,12 @@ private:
 	 */
 	void limitVelocitySetpoint(const mc_ctrl::ControllerCommand &command, matrix::Vector3f &velocity_sp) const;
 
-	/// Advance the integrator, having already absorbed any hover-thrust change.
-	void updateIntegral(const mc_ctrl::ControllerState &state, int axis, float position_error);
+	/**
+	 * Advance the integrator, having already absorbed any hover-thrust change.
+	 *
+	 * @param velocity_error [m/s] limited equivalent velocity setpoint minus velocity, NED
+	 */
+	void updateIntegral(const mc_ctrl::ControllerState &state, int axis, float velocity_error);
 
 	/**
 	 * Keep the collective continuous across a hover-thrust estimate update.
@@ -230,7 +240,7 @@ private:
 	bool _stage_valid{false};
 
 	// Cached parameters, so the stage never touches the parameter system at gyro rate.
-	matrix::Vector3f _pos_i{};	///< [1/s^3] (MC_OL_XY_I, MC_OL_XY_I, MC_OL_Z_I)
+	matrix::Vector3f _vel_i{};	///< [1/s^2] (MC_OL_XY_I, MC_OL_XY_I, MC_OL_Z_I)
 	float _integral_limit{0.f};	///< [m/s^2] MC_OL_I_LIM
 
 	DEFINE_PARAMETERS(

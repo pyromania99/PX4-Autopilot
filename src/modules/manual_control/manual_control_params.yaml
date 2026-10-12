@@ -40,6 +40,37 @@ parameters:
       max: 1
       decimal: 2
       increment: 0.01
+    MAN_NORTH_REF:
+      description:
+        short: North-referenced sticks with a yaw-stick course offset
+        long: |-
+          For a multicopter that does not control its heading. In Stabilized, Altitude
+          and Position (and their Slow/Cruise variants) the pitch/roll sticks are
+          interpreted in a fixed WORLD frame instead of the vehicle's heading frame:
+          full forward pitch tilts toward the course reference, full right roll 90 deg
+          clockwise of it, whatever way the airframe is pointing.
+
+          The yaw stick does not command a yaw rotation. It steers the course reference
+          at up to MAN_CRS_RATE, starting from north (0) at every arm. The yaw stick is
+          published as zero in those modes, so no downstream controller acts on it.
+
+          Every other mode (Acro, Manual, the auto modes) is left untouched.
+      type: boolean
+      default: 1
+    MAN_CRS_RATE:
+      description:
+        short: Course reference rate at full yaw stick
+        long: |-
+          How fast the yaw stick turns the course reference MAN_NORTH_REF measures the
+          pitch/roll sticks from. MAN_DEADZONE is applied to the yaw stick first so a
+          stick resting slightly off centre does not slowly steer the reference away.
+      type: float
+      default: 150.0
+      unit: deg/s
+      min: 1.0
+      max: 360.0
+      decimal: 0
+      increment: 5.0
     MAN_OVERRIDE_SPD:
       description:
         short: Manual control override speed threshold

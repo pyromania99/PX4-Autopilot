@@ -96,6 +96,7 @@ void ManualControl::processInput(hrt_abstime now)
 			_system_id = vehicle_status.system_id;
 			_rotary_wing = (vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING);
 			_vtol = vehicle_status.is_vtol;
+			_nav_state = vehicle_status.nav_state;
 		}
 	}
 
@@ -152,26 +153,7 @@ void ManualControl::processInput(hrt_abstime now)
 			 || (fabsf(_throttle_diff.update(_selector.setpoint().throttle, dt_s)) > velocity_threshold
 			     && _throttle_diff.consecutiveSameSign() >= MIN_SIGN_CONSECUTIVE));
 
-		// Apply NED to body frame coordinate transformation for pitch and roll
-		vehicle_attitude_s vehicle_attitude;
-		if (_vehicle_attitude_sub.copy(&vehicle_attitude)) {
-			// Get current yaw angle
-			matrix::Eulerf euler = matrix::Quatf(vehicle_attitude.q);
-			const float yaw = euler.psi();
-
-			// Store original NED frame commands
-			const float ned_pitch = _selector.setpoint().pitch;
-			const float ned_roll = _selector.setpoint().roll;
-
-			// Transform to body frame: [body_x; body_y] = R_z(-yaw) * [ned_x; ned_y]
-			// Where ned_x=pitch_forward and ned_y=roll_right in NED frame
-			_selector.setpoint().pitch = ned_pitch * cosf(yaw) + ned_roll * sinf(yaw);
-			_selector.setpoint().roll = -ned_pitch * sinf(yaw) + ned_roll * cosf(yaw);
-
-			// PX4_ERR("YAW: %.3f, NED_PITCH: %.3f, NED_ROLL: %.3f, BODY_PITCH: %.3f, BODY_ROLL: %.3f\n",
-			// 	(double)yaw, (double)ned_pitch, (double)ned_roll,
-			// 	(double)_selector.setpoint().pitch, (double)_selector.setpoint().roll);
-		}
+		applyNorthReference(dt_s);
 
 		_selector.setpoint().timestamp = now;
 		_manual_control_setpoint_pub.publish(_selector.setpoint());
@@ -427,6 +409,73 @@ void ManualControl::updateParams()
 			}
 		}
 	}
+}
+
+void ManualControl::applyNorthReference(const float dt_s)
+{
+	/*
+	 * NORTH-REFERENCED STICKS FOR A VEHICLE THAT DOES NOT CONTROL ITS HEADING.
+	 *
+	 * The pilot flies in a fixed world frame: full forward pitch tilts toward
+	 * _course_reference (north at arm), and the yaw stick turns that reference instead
+	 * of the airframe. Every consumer downstream - StickToAttitudeSetpoint, the
+	 * flight tasks, mc_controller's front end - takes this setpoint as heading-relative
+	 * and rotates it into NED by the vehicle's CURRENT yaw. So the stick is published
+	 * pre-rotated by R_z(course - yaw), and the two rotations compose to R_z(course):
+	 * the direction flown no longer depends on where the airframe points.
+	 *
+	 * That composition only holds if every consumer rotates by the current yaw, not a
+	 * held yaw setpoint - see Sticks::rotateIntoHeadingFrameXY() and
+	 * StickToAttitudeSetpoint::update(), which were changed together with this.
+	 */
+	const bool north_reference_mode = (_nav_state == vehicle_status_s::NAVIGATION_STATE_STAB)
+					  || (_nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL)
+					  || (_nav_state == vehicle_status_s::NAVIGATION_STATE_ALTITUDE_CRUISE)
+					  || (_nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL)
+					  || (_nav_state == vehicle_status_s::NAVIGATION_STATE_POSITION_SLOW);
+
+	// Every flight starts with forward meaning north.
+	if (!_armed) {
+		_course_reference = 0.f;
+	}
+
+	// Rotary wing only, and never a VTOL: in fixed-wing flight the sticks are surfaces.
+	if (!_param_man_north_ref.get() || !_rotary_wing || _vtol || !north_reference_mode) {
+		return;
+	}
+
+	vehicle_attitude_s vehicle_attitude;
+
+	if (!_vehicle_attitude_sub.copy(&vehicle_attitude)) {
+		return;
+	}
+
+	const float yaw = matrix::Eulerf(matrix::Quatf(vehicle_attitude.q)).psi();
+
+	if (!PX4_ISFINITE(yaw)) {
+		return;
+	}
+
+	// The yaw stick steers the reference. Integrated only while armed so a stick bumped
+	// on the ground cannot leave "forward" pointing somewhere other than north. dt is
+	// bounded because the first sample after a gap in input would otherwise jump it.
+	const float yaw_stick = math::deadzone(_selector.setpoint().yaw, _param_man_deadzone.get());
+
+	if (_armed && PX4_ISFINITE(yaw_stick) && PX4_ISFINITE(dt_s) && (dt_s > 0.f)) {
+		_course_reference = matrix::wrap_pi(_course_reference
+						    + yaw_stick * math::radians(_param_man_crs_rate.get()) * math::min(dt_s, 0.1f));
+	}
+
+	// Consumed here. Passed on, it would become a yaw rotation command, which is exactly
+	// what this vehicle does not do.
+	_selector.setpoint().yaw = 0.f;
+
+	// [pitch_h; roll_h] = R_z(course - yaw) * [pitch_ned; roll_ned]
+	const float angle = _course_reference - yaw;
+	const float pitch_world = _selector.setpoint().pitch;
+	const float roll_world = _selector.setpoint().roll;
+	_selector.setpoint().pitch = pitch_world * cosf(angle) - roll_world * sinf(angle);
+	_selector.setpoint().roll = pitch_world * sinf(angle) + roll_world * cosf(angle);
 }
 
 void ManualControl::processStickArming(const manual_control_setpoint_s &input)

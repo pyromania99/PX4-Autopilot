@@ -164,6 +164,10 @@ uint64_t takeOff(CommandFrontEnd &fe, uint64_t t, const vehicle_control_mode_s &
 		s.freshness.dt_position = 0.01f;
 		s.freshness.dt_attitude = 0.004f;
 		s.freshness.dt = 0.004f;
+		// A fresh local_position every iteration, matching dt_position above. Without it
+		// the takeoff ramp never advances, because it is gated on this flag - which is
+		// the whole point of TakeoffRampAdvancesAtPositionRateNotCycleRate below.
+		s.freshness.position_new = true;
 
 		trajectory_setpoint_s sp{};
 		sp.timestamp = t;
@@ -549,7 +553,7 @@ TEST(CommandFrontEndTest, TakeoffStateSurvivesAFlightSpentOutsideTrajectoryLevel
 
 	EXPECT_EQ(fe.takeoffState(), TakeoffState::flight)
 			<< "an armed, airborne vehicle must not be held pre-takeoff by a mode that "
-			   "never runs the trajectory branch";
+			"never runs the trajectory branch";
 
 	// Now switch to Altitude, hovering: altitude locked, no climb commanded, so nothing
 	// here would ever assert want_takeoff and release a stuck state machine.
@@ -628,6 +632,84 @@ TEST(CommandFrontEndTest, TakeoffRampVelocityLimitIsMonotonic)
 	EXPECT_TRUE(ever_increased) << "takeoff ramp never increased the climb limit";
 }
 
+/**
+ * The ramp integrates against dt_position - the interval BETWEEN local_position samples,
+ * which the state provider leaves standing after the sample it describes. Advancing it on
+ * every cycle therefore steps it by a whole position interval per gyro tick, so a 3 s
+ * MPC_TKO_RAMP_T collapses to a fraction of a second on real hardware and the smooth
+ * takeoff becomes a step. Flown symptom: liftoff timed by the ramp rather than by the
+ * throttle, and abrupt when it comes.
+ */
+TEST(CommandFrontEndTest, TakeoffRampAdvancesAtPositionRateNotCycleRate)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	vehicle_constraints_s c{};
+	c.want_takeoff = true;
+	c.speed_up = NAN;
+	c.speed_down = NAN;
+	fe.setVehicleConstraints(c);
+	fe.setControlMode(posctlMode());
+
+	CommandFrontEnd::Publications pubs;
+	uint64_t t = 10000000;
+
+	auto step = [&](bool position_new, int i) -> const mc_ctrl::ControllerCommand & {
+		auto s = flyingState(t);
+		s.landed = (i < 5);
+		s.maybe_landed = (i < 5);
+		s.freshness.position_new = position_new;
+		s.freshness.dt_position = 0.01f;
+
+		trajectory_setpoint_s sp{};
+		sp.timestamp = t;
+		sp.position[0] = sp.position[1] = 0.f;
+		sp.position[2] = -5.f;
+		sp.velocity[0] = sp.velocity[1] = sp.velocity[2] = NAN;
+		sp.acceleration[0] = sp.acceleration[1] = sp.acceleration[2] = NAN;
+		sp.jerk[0] = sp.jerk[1] = sp.jerk[2] = NAN;
+		sp.yaw = 0.f;
+		sp.yawspeed = NAN;
+		fe.setTrajectorySetpoint(sp);
+		return fe.update(s, t, pubs);
+	};
+
+	// Drive the state machine to rampup on real position samples - the ramp only
+	// integrates in that state, so the test has nothing to say before it.
+	int i = 0;
+
+	for (; i < 3000; i++) {
+		step(true, i);
+		t += 10000;			// 100 Hz position samples
+
+		if (fe.takeoffState() == TakeoffState::rampup) {
+			break;
+		}
+	}
+
+	ASSERT_EQ(fe.takeoffState(), TakeoffState::rampup) << "never entered the ramp";
+
+	const float limit_entering = step(false, i).vel_limit_up;
+	t += 1250;
+
+	// Now a burst of gyro-rate cycles carrying no new position sample. dt_position still
+	// reads 10 ms - the interval of the LAST sample - so advancing on every cycle steps
+	// the ramp by 10 ms of progress per 1.25 ms tick, eight times too fast.
+	for (int k = 0; k < 400; k++, i++) {
+		const float limit = step(false, i).vel_limit_up;
+		t += 1250;			// 800 Hz, a realistic gyro rate
+		ASSERT_FLOAT_EQ(limit, limit_entering)
+				<< "ramp advanced on a cycle with no new position sample, k=" << k;
+	}
+
+	EXPECT_EQ(fe.takeoffState(), TakeoffState::rampup)
+			<< "half a second of gyro cycles finished a 3 s ramp";
+}
+
 TEST(CommandFrontEndTest, TiltLimitSlewsFromLandingToAirValue)
 {
 	param_control_autosave(false);
@@ -695,6 +777,277 @@ TEST(CommandFrontEndTest, StabilizedGeneratesAndPublishesAttitudeSetpoint)
 	EXPECT_TRUE(cmd.attitude_sp.isAllFinite());
 	EXPECT_NEAR(cmd.attitude_sp.norm(), 1.f, 1e-5f) << "must be a unit quaternion";
 	EXPECT_TRUE(PX4_ISFINITE(cmd.thrust_body_sp(2)));
+}
+
+/**
+ * The pilot's tilt must point where the vehicle is actually facing, not where StickYaw last
+ * locked the heading.
+ *
+ * StickToAttitudeSetpoint rotates the stick tilt into NED by _yaw_setpoint_stabilized, and
+ * StickYaw::updateYawLock() HOLDS that value once locked - with the yaw stick centred it is
+ * never re-synced to the vehicle's yaw. Stock gets away with it because its yaw controller
+ * drives yaw onto the setpoint. The laws behind this front end command no yaw torque at
+ * all, so the two separate without bound: hardware logs show 140 deg of separation, which
+ * rotated the commanded tilt by the same angle.
+ */
+TEST(CommandFrontEndTest, TiltFollowsTheActualHeadingNotTheLockedYawSetpoint)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	/// NED direction the commanded attitude leans toward, i.e. where it accelerates.
+	auto tiltDirection = [](const Quatf & q_sp) {
+		const Vector3f body_z = Dcmf(q_sp).col(2);
+		return atan2f(-body_z(1), -body_z(0));
+	};
+
+	manual_control_setpoint_s m{};
+	m.pitch = 0.6f;		// forward, yaw stick centred so the lock engages
+	m.roll = 0.f;
+	m.yaw = 0.f;
+	m.throttle = 0.f;
+	fe.setManualControlSetpoint(m);
+	fe.setControlMode(stabMode());
+
+	CommandFrontEnd::Publications pubs;
+	uint64_t t = 10000000;
+
+	// Settle the stick input filter and let StickYaw lock the heading at yaw = 0.
+	float dir_at_zero = 0.f;
+
+	for (int i = 0; i < 400; i++) {
+		const auto &cmd = fe.update(flyingState(t), t, pubs);
+		dir_at_zero = tiltDirection(cmd.attitude_sp);
+		t += 4000;
+	}
+
+	// The vehicle has yawed 90 deg. The locked yaw setpoint does NOT follow it.
+	auto turned = flyingState(t);
+	turned.q = Quatf(Eulerf(0.f, 0.f, M_PI_F / 2.f));
+	turned.heading = M_PI_F / 2.f;
+	// Move the unaided heading with it: a divergence between the two is how StickYaw
+	// detects an EKF yaw correction, and it would drop the lock and re-sync the setpoint
+	// on its own - which would make this test pass without the correction under test.
+	turned.unaided_heading = M_PI_F / 2.f;
+
+	const auto &cmd = fe.update(turned, t, pubs);
+	const float dir_at_ninety = tiltDirection(cmd.attitude_sp);
+
+	// Relative to the nose the stick must mean the same thing at both headings.
+	const float rel_zero = wrap_pi(dir_at_zero - 0.f);
+	const float rel_ninety = wrap_pi(dir_at_ninety - M_PI_F / 2.f);
+
+	EXPECT_NEAR(rel_ninety, rel_zero, 0.02f)
+			<< "commanded tilt stayed anchored to the frozen yaw setpoint: "
+			<< "dir went " << math::degrees(dir_at_zero) << " -> " << math::degrees(dir_at_ninety)
+			<< " deg while the vehicle turned 90 deg";
+
+	// Stated the other way: the NED direction turned with the vehicle.
+	EXPECT_NEAR(wrap_pi(dir_at_ninety - dir_at_zero), M_PI_F / 2.f, 0.02f);
+}
+
+/**
+ * End to end with the NED->body transform ManualControl applies upstream: a stick that
+ * means "north" must keep producing a northward lean at any heading, and at 90 deg of yaw
+ * it must come out as body ROLL rather than body pitch.
+ *
+ * This is the pairing the two halves form. ManualControl un-rotates the pilot's NED intent
+ * by the live heading; StickToAttitudeSetpoint rotates it back into NED. The rotation is
+ * only the inverse of the un-rotation if it uses the SAME angle, which is what the
+ * re-anchoring in buildAttitudeCommand() guarantees - the stock mapping would use the
+ * frozen yaw lock and leave the pilot's direction turned by the accumulated yaw error.
+ */
+TEST(CommandFrontEndTest, NorthStickStaysNorthAtAnyHeading)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	auto tiltDirection = [](const Quatf & q_sp) {
+		const Vector3f body_z = Dcmf(q_sp).col(2);
+		return atan2f(-body_z(1), -body_z(0));
+	};
+
+	// What ManualControl::processInput() publishes: the pilot's NED intent un-rotated by
+	// the vehicle's current heading.
+	auto sticksForNorth = [](float yaw) {
+		manual_control_setpoint_s m{};
+		const float ned_pitch = 0.6f;	// "go north"
+		const float ned_roll = 0.f;
+		m.pitch = ned_pitch * cosf(yaw) + ned_roll * sinf(yaw);
+		m.roll = -ned_pitch * sinf(yaw) + ned_roll * cosf(yaw);
+		m.yaw = 0.f;
+		m.throttle = 0.f;
+		return m;
+	};
+
+	CommandFrontEnd::Publications pubs;
+	uint64_t t = 10000000;
+	fe.setControlMode(stabMode());
+
+	// Settle at yaw = 0, where "north" is straight ahead.
+	fe.setManualControlSetpoint(sticksForNorth(0.f));
+	float dir_north_at_zero = 0.f;
+
+	for (int i = 0; i < 400; i++) {
+		dir_north_at_zero = tiltDirection(fe.update(flyingState(t), t, pubs).attitude_sp);
+		t += 4000;
+	}
+
+	// Now the vehicle is pointing east. The same intent is now a body ROLL command.
+	const float yaw90 = M_PI_F / 2.f;
+	const manual_control_setpoint_s m90 = sticksForNorth(yaw90);
+	EXPECT_NEAR(m90.pitch, 0.f, 1e-5f) << "at 90 deg, north is no longer a pitch command";
+	EXPECT_NEAR(m90.roll, -0.6f, 1e-5f) << "at 90 deg, north is a left-roll command";
+
+	auto turned = flyingState(t);
+	turned.q = Quatf(Eulerf(0.f, 0.f, yaw90));
+	turned.heading = yaw90;
+	turned.unaided_heading = yaw90;
+	fe.setManualControlSetpoint(m90);
+
+	float dir_north_at_ninety = 0.f;
+
+	for (int i = 0; i < 400; i++) {
+		turned.timestamp_sample = t;
+		dir_north_at_ninety = tiltDirection(fe.update(turned, t, pubs).attitude_sp);
+		t += 4000;
+	}
+
+	// The commanded lean points the same way in the WORLD at both headings.
+	EXPECT_NEAR(wrap_pi(dir_north_at_ninety - dir_north_at_zero), 0.f, 0.05f)
+			<< "north drifted: " << math::degrees(dir_north_at_zero) << " -> "
+			<< math::degrees(dir_north_at_ninety) << " deg";
+	EXPECT_NEAR(wrap_pi(dir_north_at_zero), 0.f, 0.05f) << "and it really is north";
+}
+
+/**
+ * The yaw stick commands no rotation here and does not move the pilot's tilt either.
+ *
+ * These laws have no yaw authority to spend, so a yaw rate demand would be a number nothing can
+ * act on. Steering the direction the pitch/roll sticks are measured from is ManualControl's job
+ * (MAN_NORTH_REF), done once for every control chain; with it on the yaw stick arrives here as
+ * zero. With it off the stick still reaches StickYaw and walks the locked yaw setpoint around -
+ * which must NOT drag the tilt with it, or the front end would have a second, competing course.
+ */
+TEST(CommandFrontEndTest, YawStickCommandsNoRotationAndLeavesTheTiltAlone)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	auto tiltDirection = [](const Quatf & q_sp) {
+		const Vector3f body_z = Dcmf(q_sp).col(2);
+		return atan2f(-body_z(1), -body_z(0));
+	};
+
+	manual_control_setpoint_s m{};
+	m.pitch = 0.6f;
+	m.roll = 0.f;
+	m.yaw = 0.f;
+	m.throttle = 0.f;
+	fe.setManualControlSetpoint(m);
+	fe.setControlMode(stabMode());
+
+	CommandFrontEnd::Publications pubs;
+	uint64_t t = 10000000;
+	float dir_before = 0.f;
+
+	for (int i = 0; i < 400; i++) {
+		dir_before = tiltDirection(fe.update(flyingState(t), t, pubs).attitude_sp);
+		t += 4000;
+	}
+
+	EXPECT_NEAR(wrap_pi(dir_before), 0.f, 0.05f) << "forward stick at yaw 0 should point north";
+
+	m.yaw = 1.f;
+	fe.setManualControlSetpoint(m);
+
+	for (int i = 0; i < 400; i++) {
+		const auto &cmd = fe.update(flyingState(t), t, pubs);
+		EXPECT_FLOAT_EQ(cmd.yaw_sp_move_rate, 0.f) << "no rotation may be commanded, i=" << i;
+		EXPECT_FLOAT_EQ(pubs.attitude_setpoint_out.yaw_sp_move_rate, 0.f)
+				<< "and the published setpoint must agree, i=" << i;
+		EXPECT_NEAR(wrap_pi(tiltDirection(cmd.attitude_sp) - dir_before), 0.f, 0.02f)
+				<< "the yaw stick moved the tilt, i=" << i;
+		t += 4000;
+	}
+}
+
+/**
+ * The setpoint handed to the laws carries the VEHICLE'S heading, with the pilot's thrust
+ * direction intact.
+ *
+ * EigenController reads the Euler roll/pitch of attitude_sp and compares them with the
+ * vehicle's Euler roll/pitch. That is only meaningful if both are measured from the same
+ * heading. StickYaw's locked yaw is not that heading once the airframe has turned with nothing
+ * to stop it, and leaving it in rotated the pilot's tilt by (yaw_sp - yaw) inside the law - how
+ * MC_CTRL_ALG=3 dropped the yaw-stick course offset in SITL while MC_CTRL_ALG=1 kept it.
+ */
+TEST(CommandFrontEndTest, SetpointCarriesTheVehicleHeadingAndKeepsThrustDirection)
+{
+	param_control_autosave(false);
+	ParamHarness h;
+	CommandFrontEnd fe{&h};
+	h.updateParams();
+	fe.reset();
+
+	manual_control_setpoint_s m{};
+	m.pitch = 0.6f;		// forward in the heading frame
+	m.roll = 0.2f;
+	m.yaw = 0.f;
+	m.throttle = 0.f;
+	fe.setManualControlSetpoint(m);
+	fe.setControlMode(stabMode());
+
+	CommandFrontEnd::Publications pubs;
+	uint64_t t = 10000000;
+	Eulerf euler_at_zero{};
+
+	// Lock the yaw setpoint at 0.
+	for (int i = 0; i < 400; i++) {
+		euler_at_zero = Eulerf(fe.update(flyingState(t), t, pubs).attitude_sp);
+		t += 4000;
+	}
+
+	// The airframe has turned 110 deg; the lock has not followed it.
+	const float yaw = math::radians(110.f);
+	auto turned = flyingState(t);
+	turned.q = Quatf(Eulerf(0.f, 0.f, yaw));
+	turned.heading = turned.unaided_heading = yaw;
+
+	Quatf q_sp{};
+
+	for (int i = 0; i < 50; i++) {
+		turned.timestamp_sample = t;
+		q_sp = fe.update(turned, t, pubs).attitude_sp;
+		t += 4000;
+	}
+
+	const Eulerf euler(q_sp);
+	EXPECT_NEAR(wrap_pi(euler.psi() - yaw), 0.f, 1e-4f) << "setpoint heading is not the vehicle's";
+
+	// Same stick, same heading-relative lean: the Euler roll/pitch a law reads must be the ones
+	// the pilot asked for relative to the nose, not rotated by the stale lock.
+	EXPECT_NEAR(euler.phi(), euler_at_zero.phi(), 1e-3f);
+	EXPECT_NEAR(euler.theta(), euler_at_zero.theta(), 1e-3f);
+	EXPECT_LT(euler.theta(), -0.05f) << "forward stick must pitch nose-down";
+
+	// And the thrust direction itself turned with the airframe, exactly.
+	const Vector3f z0 = Dcmf(Quatf(euler_at_zero)).col(2);
+	const Vector3f z1 = Dcmf(q_sp).col(2);
+	const Vector3f z0_turned = Dcmf(Eulerf(0.f, 0.f, yaw)) * z0;
+	EXPECT_NEAR((z1 - z0_turned).norm(), 0.f, 1e-3f);
+	EXPECT_TRUE(pubs.attitude_setpoint);
+	EXPECT_NEAR((Quatf(pubs.attitude_setpoint_out.q_d) - q_sp).norm(), 0.f, 1e-6f)
+			<< "the published setpoint must be the one flown";
 }
 
 TEST(CommandFrontEndTest, OffboardAttitudeIsConsumedNotRepublished)

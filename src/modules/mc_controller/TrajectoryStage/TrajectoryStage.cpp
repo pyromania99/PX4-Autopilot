@@ -59,7 +59,7 @@ void TrajectoryStage::updateParams()
 {
 	ModuleParams::updateParams();
 
-	_pos_i = Vector3f(_param_mc_ol_xy_i.get(), _param_mc_ol_xy_i.get(), _param_mc_ol_z_i.get());
+	_vel_i = Vector3f(_param_mc_ol_xy_i.get(), _param_mc_ol_xy_i.get(), _param_mc_ol_z_i.get());
 	_integral_limit = math::max(_param_mc_ol_i_lim.get(), 0.f);
 }
 
@@ -111,7 +111,7 @@ void TrajectoryStage::absorbHoverThrustChange(float hover_thrust)
 	_integral(2) = math::constrain(_integral(2), -_integral_limit, _integral_limit);
 }
 
-void TrajectoryStage::updateIntegral(const mc_ctrl::ControllerState &state, int axis, float position_error)
+void TrajectoryStage::updateIntegral(const mc_ctrl::ControllerState &state, int axis, float velocity_error)
 {
 	// Only integrate on a real position interval. The stage also runs on first entry after
 	// a reset, where dt_position describes whatever interval preceded it rather than one
@@ -131,8 +131,8 @@ void TrajectoryStage::updateIntegral(const mc_ctrl::ControllerState &state, int 
 	// Anti-windup. Integrating into an output that is already pinned buys nothing and has
 	// to be unwound later, so the term is frozen while the limit is pushing back - and only
 	// in the direction that would deepen it, so the integrator can always still leave.
-	// NED: a negative z error means the setpoint is above the vehicle, i.e. asking for more
-	// thrust. The lateral case cannot be split per axis from a single clamp on the vector
+	// NED: a negative z error means the vehicle is asked to go up faster than it is, i.e.
+	// asking for more thrust. The lateral case cannot be split per axis from a single clamp on the vector
 	// norm, so the pair freezes together, which is the honest reading of "the horizontal
 	// demand as a whole is already past what the tilt limit can deliver".
 	if (axis < 2) {
@@ -140,12 +140,12 @@ void TrajectoryStage::updateIntegral(const mc_ctrl::ControllerState &state, int 
 			return;
 		}
 
-	} else if ((_thrust_saturated_max && (position_error < 0.f))
-		   || (_thrust_saturated_min && (position_error > 0.f))) {
+	} else if ((_thrust_saturated_max && (velocity_error < 0.f))
+		   || (_thrust_saturated_min && (velocity_error > 0.f))) {
 		return;
 	}
 
-	_integral(axis) += _pos_i(axis) * position_error * state.freshness.dt_position;
+	_integral(axis) += _vel_i(axis) * velocity_error * state.freshness.dt_position;
 	_integral(axis) = math::constrain(_integral(axis), -_integral_limit, _integral_limit);
 }
 
@@ -203,8 +203,7 @@ Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerS
 
 	// NaN means "not commanded" in a setpoint and "not estimable" in state, so the two have
 	// to be tested together. An unset axis contributes no error rather than poisoning the
-	// sum. Velocity-only modes deliver a velocity_sp with position_sp NaN, which a
-	// position-error-only law cannot serve at all.
+	// sum. Velocity-only modes deliver a velocity_sp with position_sp NaN.
 	Vector3f acceleration_sp{};
 
 	// The velocity this law is effectively asking for on each axis - see limitVelocitySetpoint()
@@ -212,22 +211,19 @@ Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerS
 	Vector3f velocity_sp{NAN, NAN, NAN};
 	Vector3f position_error{};
 
+	// Axes the mode actually commands a position or velocity on. The rest - ALTCTL's
+	// horizontal axes, which carry only an acceleration - still get a zero equivalent
+	// velocity setpoint below, because the D term damps absolute velocity there; that is
+	// damping, not a tracking target, and integrating it would fight the pilot.
+	bool commanded[3] {};
+
 	for (int i = 0; i < 3; i++) {
 		const bool have_position = PX4_ISFINITE(command.position_sp(i)) && PX4_ISFINITE(state.position(i));
 		const bool have_velocity_state = PX4_ISFINITE(state.velocity(i));
 		const bool have_velocity = PX4_ISFINITE(command.velocity_sp(i)) && have_velocity_state;
 
 		position_error(i) = have_position ? (command.position_sp(i) - state.position(i)) : 0.f;
-
-		// Only where a position is actually commanded: on a velocity-only axis there is no
-		// hold target, so there is nothing for an integrator to converge onto. This also
-		// drains the term the moment the mode stops commanding position.
-		if (have_position) {
-			updateIntegral(state, i, position_error(i));
-
-		} else {
-			_integral(i) = 0.f;
-		}
+		commanded[i] = have_position || have_velocity;
 
 		// With no velocity setpoint the D term damps absolute velocity, which is the same
 		// thing with v_sp == 0. Both cases fold into the equivalent velocity setpoint, which
@@ -239,6 +235,26 @@ Vector3f TrajectoryStage::computeAccelerationSetpoint(const mc_ctrl::ControllerS
 	}
 
 	limitVelocitySetpoint(command, velocity_sp);
+
+	// The integrator runs on the error against the LIMITED equivalent velocity setpoint,
+	// which is exactly stock's vertical and horizontal velocity integrator: on a hold axis
+	// that error is (pos_p/pos_d)*position_error at steady state, so a standing offset is
+	// trimmed; on a velocity-only axis - ALTCTL and POSCTL while a stick is deflected - it
+	// is the commanded-versus-achieved rate, so a hover-thrust or CG bias cannot eat the
+	// stick. Integrating position error instead zeroed the term the moment a stick moved,
+	// and every stick release restarted it from nothing.
+	//
+	// No equivalent velocity setpoint means no velocity feedback on this axis, and an
+	// uncommanded axis has no target: either way the term is dropped rather than held, so
+	// a stale correction cannot act on a loop it was not learned in.
+	for (int i = 0; i < 3; i++) {
+		if (commanded[i] && PX4_ISFINITE(velocity_sp(i))) {
+			updateIntegral(state, i, velocity_sp(i) - state.velocity(i));
+
+		} else {
+			_integral(i) = 0.f;
+		}
+	}
 
 	for (int i = 0; i < 3; i++) {
 		if (PX4_ISFINITE(velocity_sp(i))) {

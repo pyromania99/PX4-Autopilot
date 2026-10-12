@@ -35,6 +35,7 @@
 
 #include <drivers/drv_hrt.h>
 #include <lib/hysteresis/hysteresis.h>
+#include <lib/mathlib/mathlib.h>
 #include <lib/perf/perf_counter.h>
 #include <px4_platform_common/defines.h>
 #include <px4_platform_common/module.h>
@@ -152,8 +153,17 @@ private:
 	uint8_t _system_id{1};
 	bool _rotary_wing{false};
 	bool _vtol{false};
+	uint8_t _nav_state{0};
+
+	/// [rad] World heading full-forward pitch stick tilts toward; 0 is north. See MAN_NORTH_REF.
+	float _course_reference{0.f};
+
+	void applyNorthReference(float dt_s);
 
 	DEFINE_PARAMETERS(
+		(ParamBool<px4::params::MAN_NORTH_REF>) _param_man_north_ref,
+		(ParamFloat<px4::params::MAN_CRS_RATE>) _param_man_crs_rate,
+		(ParamFloat<px4::params::MAN_DEADZONE>) _param_man_deadzone,
 		(ParamInt<px4::params::COM_RC_IN_MODE>) _param_com_rc_in_mode,
 		(ParamFloat<px4::params::COM_RC_LOSS_T>) _param_com_rc_loss_t,
 		(ParamFloat<px4::params::MAN_OVERRIDE_SPD>) _param_man_override_spd,

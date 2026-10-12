@@ -82,6 +82,8 @@ void CommandFrontEnd::reset()
 	_time_position_control_enabled = 0;
 	_position_control_was_enabled = false;
 	_tilt_limit_slew_rate.setForcedValue(math::radians(_param_mpc_tiltmax_lnd.get()));
+	_tilt_limit_cached = NAN;
+	_speed_up_cached = NAN;
 }
 
 void CommandFrontEnd::setVehicleStatus(const vehicle_status_s &vs)
@@ -298,13 +300,37 @@ void CommandFrontEnd::buildTrajectoryCommand(const mc_ctrl::ControllerState &sta
 	}
 
 	// --- limits ------------------------------------------------------------
-	const float tilt_limit_deg = (_takeoff.getTakeoffState() < TakeoffState::flight)
-				     ? _param_mpc_tiltmax_lnd.get() : _param_mpc_tiltmax_air.get();
-	_command.tilt_limit = _tilt_limit_slew_rate.update(math::radians(tilt_limit_deg), dt);
+	/*
+	 * ADVANCED ONCE PER POSITION SAMPLE, not once per cycle. Both of these integrate
+	 * against dt, and dt here is state.freshness.dt_position - the interval BETWEEN
+	 * local_position samples, which the state provider leaves standing between them
+	 * (endCycle() clears position_new, not dt_position). This function runs on the
+	 * rate_ctrl queue at gyro rate, so advancing them every cycle steps each one by a
+	 * whole position interval per gyro tick: the ratio of the two rates, 8-20x on real
+	 * hardware, and MPC_TKO_RAMP_T's 3 s collapses to about 0.2 s.
+	 *
+	 * That turns the smooth-takeoff ramp into a step - the vehicle sits at zero thrust
+	 * while the ramp's velocity limit is still negative, then is released all at once -
+	 * which is exactly how it presents in flight: a liftoff whose timing is set by the
+	 * ramp rather than by the throttle stick, and an abrupt one. It stayed invisible
+	 * until the controllers began respecting command.vel_limit_up, because before that
+	 * nothing consumed the ramp at all.
+	 *
+	 * TrajectoryStage::updateIntegral() already gates on this flag for the same reason.
+	 */
+	if (state.freshness.position_new || !PX4_ISFINITE(_tilt_limit_cached)) {
+		const float tilt_limit_deg = (_takeoff.getTakeoffState() < TakeoffState::flight)
+					     ? _param_mpc_tiltmax_lnd.get() : _param_mpc_tiltmax_air.get();
+		_tilt_limit_cached = _tilt_limit_slew_rate.update(math::radians(tilt_limit_deg), dt);
 
-	const float speed_up = _takeoff.updateRamp(dt,
-			       PX4_ISFINITE(_vehicle_constraints.speed_up) ? _vehicle_constraints.speed_up
-			       : _param_mpc_z_vel_max_up.get());
+		_speed_up_cached = _takeoff.updateRamp(dt,
+						       PX4_ISFINITE(_vehicle_constraints.speed_up) ? _vehicle_constraints.speed_up
+						       : _param_mpc_z_vel_max_up.get());
+	}
+
+	_command.tilt_limit = _tilt_limit_cached;
+
+	const float speed_up = _speed_up_cached;
 	const float speed_down = PX4_ISFINITE(_vehicle_constraints.speed_down) ? _vehicle_constraints.speed_down
 				 : _param_mpc_z_vel_max_dn.get();
 
@@ -344,12 +370,67 @@ void CommandFrontEnd::buildAttitudeCommand(const mc_ctrl::ControllerState &state
 		_stick_to_attitude.update(_manual_control_setpoint, state.q, state.unaided_heading,
 					  state.freshness.dt_attitude, sp);
 
-		publications.attitude_setpoint = true;
-		publications.attitude_setpoint_out = sp;
-
 		_command.attitude_sp = Quatf(sp.q_d);
 		_command.yaw_sp_move_rate = sp.yaw_sp_move_rate;
 		_command.thrust_body_sp = Vector3f(sp.thrust_body);
+
+		/*
+		 * THE YAW STICK COMMANDS NO ROTATION.
+		 *
+		 * These laws surrender yaw torque by design - see EigenController::eigenTorque() - so a
+		 * yaw rate demand would go nowhere, and leaving it in yaw_sp_move_rate would put it back
+		 * into the rate setpoint as a rotation command. What the pilot's yaw stick does instead
+		 * is steer the world direction the pitch/roll sticks are measured from, and that is done
+		 * once, upstream, in ManualControl (MAN_NORTH_REF), so it is the same for every control
+		 * chain including stock. With MAN_NORTH_REF on the yaw stick already arrives as zero.
+		 */
+		_command.yaw_sp_move_rate = 0.f;
+
+		/*
+		 * RE-HEAD THE SETPOINT ON THE VEHICLE'S OWN YAW, KEEPING ITS THRUST DIRECTION.
+		 *
+		 * StickToAttitudeSetpoint builds the tilt around the vehicle's current heading
+		 * (correctTiltSetpointForYawError, applied to every vehicle) but still assigns it the
+		 * yaw StickYaw LOCKED when the yaw stick last centred. Nothing here drives yaw onto
+		 * that lock - hardware logs show it frozen for 30 s while the airframe turned 140 deg -
+		 * so the setpoint's heading is an arbitrary angle that only its thrust direction does
+		 * not depend on.
+		 *
+		 * The thrust direction (body z in NED) is what the pilot asked for and is kept exactly.
+		 * The heading is replaced with the vehicle's yaw, because that is the frame the laws
+		 * read the setpoint in: CascadedPd takes body z and is indifferent, but EigenController
+		 * takes the Euler roll/pitch of attitude_sp and compares them with the vehicle's own
+		 * Euler roll/pitch. Those only mean the same thing when both are measured from the same
+		 * heading - with the locked yaw left in, the comparison rotates the pilot's tilt by
+		 * (yaw_sp - yaw), which is what made MC_CTRL_ALG=3 lose the course offset in SITL.
+		 *
+		 * Solved in closed form from ZYX Euler: body z of (phi, theta, psi) is
+		 * R_z(psi) * [cos(phi) sin(theta), -sin(phi), cos(phi) cos(theta)], so with the desired
+		 * body z expressed in the heading frame, phi = asin(-z_y) and theta = atan2(z_x, z_z).
+		 * The Euler yaw of the result is then EXACTLY the vehicle's, at any tilt.
+		 *
+		 * STICK PATH ONLY. An offboard or VTOL setpoint arrives as a complete attitude with a
+		 * heading its sender chose, and must not be touched.
+		 */
+		if (_command.attitude_sp.isAllFinite() && (fabsf(_command.attitude_sp.norm()) > FLT_EPSILON)) {
+			const float yaw = Eulerf(state.q).psi();
+
+			if (PX4_ISFINITE(yaw)) {
+				const Vector3f body_z = Dcmf(_command.attitude_sp).col(2);
+				const Vector3f z_h = Dcmf(Eulerf(0.f, 0.f, -yaw)) * body_z;
+				const float phi = asinf(math::constrain(-z_h(1), -1.f, 1.f));
+				const float theta = atan2f(z_h(0), z_h(2));
+				_command.attitude_sp = Quatf(Eulerf(phi, theta, yaw));
+			}
+		}
+
+		// Publish what is actually flown, not what the stick mapping produced before the
+		// correction above: vehicle_attitude_setpoint is the log's record of the commanded
+		// attitude and is read by other consumers, so the two must not disagree.
+		_command.attitude_sp.copyTo(sp.q_d);
+		sp.yaw_sp_move_rate = _command.yaw_sp_move_rate;
+		publications.attitude_setpoint = true;
+		publications.attitude_setpoint_out = sp;
 
 	} else {
 		// Offboard attitude or VTOL: consume the externally published setpoint.

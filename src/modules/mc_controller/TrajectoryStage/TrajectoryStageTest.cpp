@@ -431,8 +431,9 @@ TEST_F(TrajectoryStageTest, IntegralAccumulatesAgainstAStandingPositionError)
 		previous = now;
 	}
 
-	// 10 steps of I * e * dt = 1.0 * -2 * 0.02.
-	EXPECT_NEAR(_stage->integral()(2), -0.4f, 1e-4f);
+	// The integrator runs on the equivalent velocity error, (pos_p/pos_d)*e_p on a hold
+	// axis: 10 steps of I * (10/5.3 * -2) * 0.02.
+	EXPECT_NEAR(_stage->integral()(2), 10.f * 1.0f * (kPosP(2) / kPosD(2) * -2.f) * 0.02f, 1e-4f);
 }
 
 TEST_F(TrajectoryStageTest, IntegralIsBoundedByTheLimit)

@@ -38,7 +38,7 @@ sed -i 's/TemplateController/MyController/g; s/"template"/"mine"/' MyController.
 If your law has a conventional position loop, you can skip writing one: hold a
 `TrajectoryStage` and delegate the setpoint→acceleration and collective stages to it,
 as both shipped laws do. It also carries the only integrator in this module
-(`MC_OL_XY_I` / `MC_OL_Z_I`, both shipping at 0). Opting out is simply not holding
+(`MC_OL_XY_I` / `MC_OL_Z_I`, a velocity-error integrator shipping at 0 / 2.0). Opting out is simply not holding
 one. See [README.md](README.md#sharing-the-trajectory-stage).
 
 ### Where your math goes

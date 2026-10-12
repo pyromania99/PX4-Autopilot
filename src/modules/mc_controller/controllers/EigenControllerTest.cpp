@@ -90,6 +90,11 @@ void resetParams()
 	setParam("MC_EIG_TRQ_MAX", 1.0f);
 	setParam("MC_ROLLRATE_MAX", 220.0f);
 	setParam("MC_PITCHRATE_MAX", 220.0f);
+	setParam("MC_OL_XY_I", 0.0f);
+	setParam("MC_OL_Z_I", 2.0f);
+	setParam("MC_OL_I_LIM", 9.81f);
+	setParam("MC_ATT_TRIM_I", 0.0f);
+	setParam("MC_ATT_TRIM_LIM", 0.1f);
 	setParam("MC_YAWRATE_MAX", 200.0f);
 }
 
@@ -272,7 +277,11 @@ TEST_F(EigenControllerTest, GyroscopicTermIsTheTrueRigidBodyCoupling)
 
 	EXPECT_NEAR(output.torque(0), expected(0), 1e-7f);
 	EXPECT_NEAR(output.torque(1), expected(1), 1e-7f);
-	EXPECT_NEAR(output.torque(2), expected(2), 1e-7f);
+
+	// Yaw carries no coupling term any more because it carries no torque at all: the law
+	// commands exactly zero there, so there is nothing for a gyroscopic correction to
+	// correct. See YawTorqueIsAlwaysZero.
+	EXPECT_FLOAT_EQ(output.torque(2), 0.f);
 }
 
 /**
@@ -351,27 +360,38 @@ TEST_F(EigenControllerTest, TrajectoryLevelProducesNoYawTorque)
  * eigenvalue leaves no feedback on the measured yaw rate. So a commanded yaw rate produces
  * Izz*beta*rate_sp, and a measured yaw rate on its own produces nothing.
  */
-TEST_F(EigenControllerTest, YawTorqueIsPureFeedforward)
+TEST_F(EigenControllerTest, YawTorqueIsAlwaysZero)
 {
 	ControllerState state = hoverState();
 
+	// A commanded yaw rate produces nothing. The yaw row of the eigen block exists to keep
+	// the feedback linearization square - M_dyn(2,2) and A_r(2,2) cancel - not to actuate,
+	// and the mixer has no yaw column to spend a demand on (CA_ROTOR*_KM == 0).
 	ControllerOutput commanded{};
 	ASSERT_TRUE(_controller->update(state, rateCommand(Vector3f(0.f, 0.f, 1.f)), 0.0025f, commanded));
-	EXPECT_NEAR(commanded.torque(2), 0.02f * 0.6f * 1.f, 1e-7f);
+	EXPECT_FLOAT_EQ(commanded.torque(2), 0.f);
 
-	// Spinning at 1 rad/s with nothing commanded: no restoring torque at all.
+	// Spinning at 1 rad/s with nothing commanded: no restoring torque either.
 	_controller->reset();
 	state.angular_velocity = Vector3f(0.f, 0.f, 1.f);
 	ControllerOutput spinning{};
 	ASSERT_TRUE(_controller->update(state, rateCommand(Vector3f(0.f, 0.f, 0.f)), 0.0025f, spinning));
-	EXPECT_NEAR(spinning.torque(2), 0.f, 1e-9f);
+	EXPECT_FLOAT_EQ(spinning.torque(2), 0.f);
+
+	// And not even under a rate that would once have driven the feedforward hardest.
+	_controller->reset();
+	state.angular_velocity = Vector3f(0.2f, -0.4f, 3.f);
+	ControllerOutput fast{};
+	ASSERT_TRUE(_controller->update(state, rateCommand(Vector3f(0.f, 0.f, -2.f)), 0.0025f, fast));
+	EXPECT_FLOAT_EQ(fast.torque(2), 0.f);
 }
 
 /**
- * Unlike MC_CTRL_ALG=1, the yaw stick does something at the Attitude level: yaw_sp_move_rate
- * reaches the feedforward term.
+ * yaw_sp_move_rate still reaches the rate setpoint, which is what gets logged and what a
+ * yaw-capable airframe would act on, but it produces no torque here. In manual flight the
+ * front end zeroes it anyway and spends the yaw stick on the course reference instead.
  */
-TEST_F(EigenControllerTest, YawStickReachesTheOutputAtAttitudeLevel)
+TEST_F(EigenControllerTest, YawStickReachesTheRateSetpointButNotTheTorque)
 {
 	ControllerState state = hoverState();
 	ControllerCommand command = hoverCommand(state);
@@ -382,7 +402,7 @@ TEST_F(EigenControllerTest, YawStickReachesTheOutputAtAttitudeLevel)
 
 	ControllerOutput output{};
 	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
-	EXPECT_NEAR(output.torque(2), 0.02f * 0.6f * 0.8f, 1e-7f);
+	EXPECT_FLOAT_EQ(output.torque(2), 0.f);
 	EXPECT_NEAR(output.rate_setpoint(2), 0.8f, 1e-6f);
 }
 
@@ -922,6 +942,170 @@ TEST_F(EigenControllerTest, ZeroInertiaIsFloored)
 	ASSERT_TRUE(_controller->update(hoverState(), rateCommand(Vector3f(1.f, 0.f, 0.f)), 0.0025f, output));
 	EXPECT_TRUE(outputIsFinite(output));
 	EXPECT_GT(output.torque(0), 0.f);
+}
+
+
+// ---------------------------------------------------------------------------
+// The shared trajectory stage's velocity-error integrator (MC_OL_Z_I)
+// ---------------------------------------------------------------------------
+
+/**
+ * The regression this integrator exists for. ALTCTL and POSCTL send a vertical velocity
+ * with NO z position whenever the throttle stick is off centre. The old position-error
+ * integrator zeroed itself on such an axis, so a hover thrust set too high became a
+ * standing climb bias that cancelled the descent: on the 2026-09-24 spin flights full
+ * stick-down gave 0.02 m/s. Now the rate error integrates and the collective keeps
+ * dropping for as long as the commanded descent is not being achieved.
+ */
+TEST_F(EigenControllerTest, VerticalIntegratorActsWhileTheStickCommandsDescent)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = NAN;
+	command.velocity_sp(2) = 0.7f;	// NED: descend at 0.7 m/s, which the vehicle is not doing
+
+	const int steps = 50;
+	ControllerOutput output{};
+
+	for (int i = 0; i < steps; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	// a_z = MC_EIG_Z_D * 0.7 + MC_OL_Z_I * 0.7 * dt_position * steps, collective = h*(a_z/g - 1)
+	const float integral = 2.0f * 0.7f * state.freshness.dt_position * steps;
+	const float a_z = 5.3f * 0.7f + integral;
+	const float expected = state.hover_thrust * (a_z / CONSTANTS_ONE_G - 1.f);
+	EXPECT_NEAR(output.thrust(2), expected, 1e-4f);
+
+	// And it really came from the integrator: without it the collective sits higher.
+	const float pd_only = state.hover_thrust * (5.3f * 0.7f / CONSTANTS_ONE_G - 1.f);
+	EXPECT_GT(output.thrust(2), pd_only + 0.05f);
+}
+
+/// On a hold axis the same term trims a standing altitude offset, as stock's does.
+TEST_F(EigenControllerTest, VerticalIntegratorTrimsAStandingAltitudeOffset)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) -= 0.2f;	// setpoint 0.2 m above: more thrust wanted
+
+	ControllerOutput first{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, first));
+
+	const int more = 49;
+	ControllerOutput output{};
+
+	for (int i = 0; i < more; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	// Equivalent velocity error is (Z_P/Z_D) * position error; each step adds I * that * dt.
+	const float step_integral = 2.0f * (10.0f / 5.3f) * (-0.2f) * state.freshness.dt_position;
+	const float expected_change = state.hover_thrust * (step_integral * more) / CONSTANTS_ONE_G;
+	EXPECT_NEAR(output.thrust(2) - first.thrust(2), expected_change, 1e-4f);
+	EXPECT_LT(output.thrust(2), first.thrust(2));
+}
+
+/**
+ * Anti-windup: a descent the collective cannot deliver (pinned at thrust_min) must not
+ * wind the integrator down. If it did, releasing the stick would leave the vehicle short
+ * of thrust for seconds and it would drop.
+ */
+TEST_F(EigenControllerTest, VerticalIntegratorDoesNotWindIntoThrustMin)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = NAN;
+	command.velocity_sp(2) = 3.f;
+
+	ControllerOutput output{};
+
+	for (int i = 0; i < 200; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	ASSERT_NEAR(output.thrust(2), -command.thrust_min, 1e-5f);
+
+	// Stick back to centre: only the single pre-saturation step may remain in the term.
+	command.velocity_sp(2) = 0.f;
+	output.reset();
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	const float residual = 2.0f * 3.f * state.freshness.dt_position;
+	EXPECT_NEAR(output.thrust(2), state.hover_thrust * (residual / CONSTANTS_ONE_G - 1.f), 1e-4f);
+}
+
+
+// ---------------------------------------------------------------------------
+// The shared roll/pitch torque trim (MC_ATT_TRIM_*)
+// ---------------------------------------------------------------------------
+
+/**
+ * Wiring, for this law: off it changes nothing; on, it integrates the roll/pitch torque the
+ * law holds against a standing attitude error and adds it to the output, leaves yaw alone,
+ * is logged, freezes on allocator saturation and drops on reset_integrals. The integral
+ * itself is TorqueTrimTest's.
+ */
+TEST_F(EigenControllerTest, TorqueTrimTakesOverAHeldRollTorque)
+{
+	ControllerState state = hoverState();
+	state.q = Quatf(Eulerf(math::radians(3.f), 0.f, 0.f));	// rolled against a level setpoint
+	state.angular_velocity(2) = 3.f;			// spinning, to prove yaw is left alone
+	ControllerCommand command = hoverCommand(state);
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	const Vector3f law = output.torque;
+	ASSERT_LT(law(0), -1e-3f) << "the law must be holding a roll torque for this test to mean anything";
+
+	// Off by default: repeated updates reproduce the law exactly.
+	for (int i = 0; i < 50; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	EXPECT_NEAR(output.torque(0), law(0), 1e-6f);
+
+	reconfigure("MC_ATT_TRIM_I", 1.f);
+
+	const int steps = 200;
+
+	for (int i = 0; i < steps; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	const float trim = 1.f * law(0) * 0.0025f * steps;
+	EXPECT_NEAR(output.torque(0), law(0) + trim, 1e-5f);
+	EXPECT_NEAR(output.torque(1), law(1) + 1.f * law(1) * 0.0025f * steps, 1e-5f);
+	EXPECT_EQ(output.torque(2), law(2));
+
+	mc_controller_status_s status{};
+	_controller->fillStatus(status);
+	EXPECT_NEAR(status.torque_trim[0], trim, 1e-5f);
+
+	// Allocator saturation on roll freezes it.
+	mc_ctrl::AllocatorFeedback feedback{};
+	feedback.torque_setpoint_achieved = false;
+	feedback.saturation_negative(0) = true;
+	_controller->setAllocatorFeedback(feedback);
+	const float frozen = output.torque(0);
+
+	for (int i = 0; i < 50; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	EXPECT_NEAR(output.torque(0), frozen, 1e-6f);
+
+	// reset_integrals drops it; the same update then integrates one fresh step.
+	_controller->setAllocatorFeedback(mc_ctrl::AllocatorFeedback{});
+	command.reset_integrals = true;
+	output.reset();
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	EXPECT_NEAR(output.torque(0), law(0) * (1.f + 0.0025f), 1e-5f);
 }
 
 } // namespace

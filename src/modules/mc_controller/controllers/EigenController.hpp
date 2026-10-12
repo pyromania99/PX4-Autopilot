@@ -73,6 +73,7 @@
 #include "ActuatorLead.hpp"
 #include "RateLimits.hpp"
 #include "Seat.hpp"
+#include "TorqueTrim.hpp"
 #include "PoleAdapter.hpp"
 
 #include <MulticopterControllerBase.hpp>
@@ -179,6 +180,14 @@ private:
 	 */
 	RateLimits _rate_limits;
 
+	/**
+	 * Body-frame roll/pitch torque trim, the attitude-level integral (MC_ATT_TRIM_*),
+	 * shared with MC_CTRL_ALG=1. Applied LAST, after the seat and the lead, in normalized
+	 * units: the bias it cancels is DC in the body frame, so the seat angle must not rotate
+	 * it, and leaving it out of the seat's xd keeps the seat comparing like with like.
+	 */
+	TorqueTrim _torque_trim;
+
 	// Angle-error derivative state. Held between attitude samples rather than
 	// recomputed at gyro rate, where the difference would be quantization noise.
 	float _roll_error_prev{0.f};
@@ -202,7 +211,7 @@ private:
 
 	/**
 	 * Stages 1 and 2-magnitude, shared with the other laws in this module: the per-axis
-	 * PD, the position integrator, the lateral clamp and the collective. Opting in is
+	 * PD, the velocity integrator, the lateral clamp and the collective. Opting in is
 	 * composition - holding one of these and delegating - so opting out would mean simply
 	 * not having it, as TemplateController does.
 	 *

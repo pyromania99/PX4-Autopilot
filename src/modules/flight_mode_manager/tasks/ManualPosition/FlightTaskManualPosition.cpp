@@ -91,8 +91,9 @@ void FlightTaskManualPosition::_scaleSticks()
 	// scale velocity to its maximum limits
 	Vector2f vel_sp_xy = stick_xy * velocity_scale;
 
-	// Rotate setpoint into local frame
-	Sticks::rotateIntoHeadingFrameXY(vel_sp_xy, _yaw, _yaw_setpoint);
+	// Rotate setpoint into local frame by the current yaw, never the held yaw setpoint:
+	// see StickTiltXY::generateAccelerationSetpoints().
+	Sticks::rotateIntoHeadingFrameXY(vel_sp_xy, _yaw, NAN);
 
 	_velocity_setpoint.xy() = vel_sp_xy;
 }

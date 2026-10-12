@@ -45,3 +45,5 @@ float32 pole_theta_b	# [rad] adaptive pole-angle offset (MC_POLE_*), 0 when disa
 float32 pole_alpha_b	# [rad] misalignment driving it, NaN while gated
 float32 pole_theta_hat	# [rad] converged estimate, dither excluded (MC_POLE_EN=2)
 float32 pole_cost	# [rad] |lateral direction error| being minimised, NaN while gated
+
+float32[2] torque_trim	# normalized roll/pitch torque trim (MC_ATT_TRIM_*), 0 when disabled

@@ -124,7 +124,8 @@ Quatf bodyzToAttitude(Vector3f body_z, const float yaw_sp)
 CascadedPdController::CascadedPdController(ModuleParams *parent) :
 	MulticopterControllerBase(parent),
 	_trajectory_stage(this),
-	_rate_limits(this)
+	_rate_limits(this),
+	_torque_trim(this)
 {
 	CascadedPdController::updateParams();
 	CascadedPdController::reset();
@@ -153,10 +154,10 @@ void CascadedPdController::updateParams()
 
 void CascadedPdController::reset()
 {
-	// The inner loop has no integrators and no filters, so a reset here is just dropping
-	// the cached stage outputs. The shared stage's validity flag is what stops a stale
-	// attitude setpoint from the previous mode being commanded before the position stage
-	// has run once; its full reset() also drops the position integrator.
+	// The inner loop has no filters and one integral, the torque trim, so a reset here is
+	// dropping that and the cached stage outputs. The shared stage's validity flag is what
+	// stops a stale attitude setpoint from the previous mode being commanded before the
+	// position stage has run once; its full reset() also drops the velocity integrator.
 	_attitude_setpoint = Quatf();
 	_body_z_setpoint = Vector3f(0.f, 0.f, 1.f);
 	_thrust_setpoint.setZero();
@@ -164,6 +165,7 @@ void CascadedPdController::reset()
 	_autotune_rate_sp.setZero();
 	_attitude_error.setZero();
 	_trajectory_stage.reset();
+	_torque_trim.reset();
 }
 
 void CascadedPdController::bodyzToAttitudeSetpoint(Vector3f body_z, const mc_ctrl::ControllerState &state,
@@ -203,7 +205,7 @@ void CascadedPdController::stepTrajectoryToBodyZ(const mc_ctrl::ControllerState 
 		const mc_ctrl::ControllerCommand &command)
 {
 	// Stage 1 and the lateral clamp live in the shared trajectory stage: they were
-	// identical across every law in this module, and that is now where the position
+	// identical across every law in this module, and that is now where the velocity
 	// integrator lives too. The gains stay here - MC_PD_* is this law's own tuning, and its
 	// vertical defaults differ from the eigen law's.
 	//
@@ -273,14 +275,15 @@ Vector3f CascadedPdController::attitudeToRateSetpoint(const Quatf &q)
 bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 				  float dt, mc_ctrl::ControllerOutput &output)
 {
-	// HARD CONTRACT from the interface. The shared stage's position integrator is the one
-	// thing here that genuinely winds up, and zeroing it on the ground is what keeps the
-	// vehicle from leaping at takeoff. The cached stage outputs go too, so a mode change
-	// cannot carry a stale attitude setpoint across.
+	// HARD CONTRACT from the interface. The shared stage's velocity integrator and the
+	// torque trim are what genuinely wind up, and zeroing them on the ground is what keeps
+	// the vehicle from leaping or leaning at takeoff. The cached stage outputs go too, so a
+	// mode change cannot carry a stale attitude setpoint across.
 	if (command.reset_integrals || !state.armed) {
 		_rate_setpoint.setZero();
 		_trajectory_stage.resetIntegral();
 		_trajectory_stage.invalidateStage();
+		_torque_trim.reset();
 	}
 
 	switch (command.level) {
@@ -336,6 +339,9 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 	const Vector3f rate_error = (_rate_setpoint + _autotune_rate_sp) - state.angular_velocity;
 	Vector3f torque = _att_d.emult(rate_error);
 
+	// Before the clamp, so its anti-windup sees the output the clamp is about to cut.
+	torque = _torque_trim.apply(torque, dt);
+
 	for (int i = 0; i < 3; i++) {
 		torque(i) = PX4_ISFINITE(torque(i)) ? math::constrain(torque(i), -1.f, 1.f) : 0.f;
 	}
@@ -354,8 +360,14 @@ bool CascadedPdController::update(const mc_ctrl::ControllerState &state, const m
 	output.attitude_setpoint = _attitude_setpoint;
 	output.valid = true;
 
-	(void)dt;	// no integrators, no filters: nothing in this law is rate dependent
 	return true;
+}
+
+void CascadedPdController::setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &feedback)
+{
+	// Roll and pitch only, matching what the trim acts on.
+	_torque_trim.setSaturated(feedback.saturation_positive(0) || feedback.saturation_negative(0)
+				  || feedback.saturation_positive(1) || feedback.saturation_negative(1));
 }
 
 void CascadedPdController::getLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const
@@ -377,4 +389,6 @@ void CascadedPdController::fillStatus(mc_controller_status_s &status) const
 	status.debug[5] = _rate_setpoint(2);
 	status.debug[6] = _thrust_setpoint(2);
 	status.debug[7] = _trajectory_stage.stageValid() ? 1.f : 0.f;
+	status.torque_trim[0] = _torque_trim.trim()(0);
+	status.torque_trim[1] = _torque_trim.trim()(1);
 }

@@ -82,6 +82,11 @@ void resetParams()
 	setParam("MC_PD_YAWR_D", 0.0f);
 	setParam("MC_ROLLRATE_MAX", 220.0f);
 	setParam("MC_PITCHRATE_MAX", 220.0f);
+	setParam("MC_OL_XY_I", 0.0f);
+	setParam("MC_OL_Z_I", 2.0f);
+	setParam("MC_OL_I_LIM", 9.81f);
+	setParam("MC_ATT_TRIM_I", 0.0f);
+	setParam("MC_ATT_TRIM_LIM", 0.1f);
 	setParam("MC_YAWRATE_MAX", 200.0f);
 }
 
@@ -737,6 +742,170 @@ TEST_F(CascadedPdControllerTest, RateControlStatusReportsZeroIntegrators)
 	EXPECT_EQ(status.rollspeed_integ, 0.f);
 	EXPECT_EQ(status.pitchspeed_integ, 0.f);
 	EXPECT_EQ(status.yawspeed_integ, 0.f);
+}
+
+
+// ---------------------------------------------------------------------------
+// The shared trajectory stage's velocity-error integrator (MC_OL_Z_I)
+// ---------------------------------------------------------------------------
+
+/**
+ * The regression this integrator exists for. ALTCTL and POSCTL send a vertical velocity
+ * with NO z position whenever the throttle stick is off centre. The old position-error
+ * integrator zeroed itself on such an axis, so a hover thrust set too high became a
+ * standing climb bias that cancelled the descent: on the 2026-09-24 spin flights full
+ * stick-down gave 0.02 m/s. Now the rate error integrates and the collective keeps
+ * dropping for as long as the commanded descent is not being achieved.
+ */
+TEST_F(CascadedPdControllerTest, VerticalIntegratorActsWhileTheStickCommandsDescent)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = NAN;
+	command.velocity_sp(2) = 0.7f;	// NED: descend at 0.7 m/s, which the vehicle is not doing
+
+	const int steps = 50;
+	ControllerOutput output{};
+
+	for (int i = 0; i < steps; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	// a_z = MC_PD_Z_D * 0.7 + MC_OL_Z_I * 0.7 * dt_position * steps, collective = h*(a_z/g - 1)
+	const float integral = 2.0f * 0.7f * state.freshness.dt_position * steps;
+	const float a_z = 4.0f * 0.7f + integral;
+	const float expected = state.hover_thrust * (a_z / CONSTANTS_ONE_G - 1.f);
+	EXPECT_NEAR(output.thrust(2), expected, 1e-4f);
+
+	// And it really came from the integrator: without it the collective sits higher.
+	const float pd_only = state.hover_thrust * (4.0f * 0.7f / CONSTANTS_ONE_G - 1.f);
+	EXPECT_GT(output.thrust(2), pd_only + 0.05f);
+}
+
+/// On a hold axis the same term trims a standing altitude offset, as stock's does.
+TEST_F(CascadedPdControllerTest, VerticalIntegratorTrimsAStandingAltitudeOffset)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) -= 0.2f;	// setpoint 0.2 m above: more thrust wanted
+
+	ControllerOutput first{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, first));
+
+	const int more = 49;
+	ControllerOutput output{};
+
+	for (int i = 0; i < more; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	// Equivalent velocity error is (Z_P/Z_D) * position error; each step adds I * that * dt.
+	const float step_integral = 2.0f * (4.0f / 4.0f) * (-0.2f) * state.freshness.dt_position;
+	const float expected_change = state.hover_thrust * (step_integral * more) / CONSTANTS_ONE_G;
+	EXPECT_NEAR(output.thrust(2) - first.thrust(2), expected_change, 1e-4f);
+	EXPECT_LT(output.thrust(2), first.thrust(2));
+}
+
+/**
+ * Anti-windup: a descent the collective cannot deliver (pinned at thrust_min) must not
+ * wind the integrator down. If it did, releasing the stick would leave the vehicle short
+ * of thrust for seconds and it would drop.
+ */
+TEST_F(CascadedPdControllerTest, VerticalIntegratorDoesNotWindIntoThrustMin)
+{
+	ControllerState state = hoverState();
+	ControllerCommand command = hoverCommand(state);
+	command.position_sp(2) = NAN;
+	command.velocity_sp(2) = 3.f;
+
+	ControllerOutput output{};
+
+	for (int i = 0; i < 200; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	ASSERT_NEAR(output.thrust(2), -command.thrust_min, 1e-5f);
+
+	// Stick back to centre: only the single pre-saturation step may remain in the term.
+	command.velocity_sp(2) = 0.f;
+	output.reset();
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	const float residual = 2.0f * 3.f * state.freshness.dt_position;
+	EXPECT_NEAR(output.thrust(2), state.hover_thrust * (residual / CONSTANTS_ONE_G - 1.f), 1e-4f);
+}
+
+
+// ---------------------------------------------------------------------------
+// The shared roll/pitch torque trim (MC_ATT_TRIM_*)
+// ---------------------------------------------------------------------------
+
+/**
+ * Wiring, for this law: off it changes nothing; on, it integrates the roll/pitch torque the
+ * law holds against a standing attitude error and adds it to the output, leaves yaw alone,
+ * is logged, freezes on allocator saturation and drops on reset_integrals. The integral
+ * itself is TorqueTrimTest's.
+ */
+TEST_F(CascadedPdControllerTest, TorqueTrimTakesOverAHeldRollTorque)
+{
+	ControllerState state = hoverState();
+	state.q = Quatf(Eulerf(math::radians(3.f), 0.f, 0.f));	// rolled against a level setpoint
+	state.angular_velocity(2) = 3.f;			// spinning, to prove yaw is left alone
+	ControllerCommand command = hoverCommand(state);
+
+	ControllerOutput output{};
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	const Vector3f law = output.torque;
+	ASSERT_LT(law(0), -1e-3f) << "the law must be holding a roll torque for this test to mean anything";
+
+	// Off by default: repeated updates reproduce the law exactly.
+	for (int i = 0; i < 50; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	EXPECT_NEAR(output.torque(0), law(0), 1e-6f);
+
+	reconfigure("MC_ATT_TRIM_I", 1.f);
+
+	const int steps = 200;
+
+	for (int i = 0; i < steps; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	const float trim = 1.f * law(0) * 0.0025f * steps;
+	EXPECT_NEAR(output.torque(0), law(0) + trim, 1e-5f);
+	EXPECT_NEAR(output.torque(1), law(1) + 1.f * law(1) * 0.0025f * steps, 1e-5f);
+	EXPECT_EQ(output.torque(2), law(2));
+
+	mc_controller_status_s status{};
+	_controller->fillStatus(status);
+	EXPECT_NEAR(status.torque_trim[0], trim, 1e-5f);
+
+	// Allocator saturation on roll freezes it.
+	mc_ctrl::AllocatorFeedback feedback{};
+	feedback.torque_setpoint_achieved = false;
+	feedback.saturation_negative(0) = true;
+	_controller->setAllocatorFeedback(feedback);
+	const float frozen = output.torque(0);
+
+	for (int i = 0; i < 50; i++) {
+		output.reset();
+		ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	}
+
+	EXPECT_NEAR(output.torque(0), frozen, 1e-6f);
+
+	// reset_integrals drops it; the same update then integrates one fresh step.
+	_controller->setAllocatorFeedback(mc_ctrl::AllocatorFeedback{});
+	command.reset_integrals = true;
+	output.reset();
+	ASSERT_TRUE(_controller->update(state, command, 0.0025f, output));
+	EXPECT_NEAR(output.torque(0), law(0) * (1.f + 0.0025f), 1e-5f);
 }
 
 } // namespace

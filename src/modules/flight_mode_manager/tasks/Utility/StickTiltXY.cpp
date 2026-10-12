@@ -62,10 +62,19 @@ Vector2f StickTiltXY::generateAccelerationSetpoints(Vector2f stick_xy, const flo
 		const float yaw_setpoint)
 {
 	Sticks::limitStickUnitLengthXY(stick_xy);
+	// Rotated by the CURRENT yaw, never the held yaw setpoint, and BEFORE the filter. The
+	// stick arrives from ManualControl already pre-rotated by (course - yaw) when
+	// MAN_NORTH_REF is on, so R(yaw) here is what cancels that yaw and leaves the pilot's
+	// world-frame intent. The held setpoint only equals yaw while something controls
+	// heading; without that it stays frozen and the flown direction turns at -1x the yaw
+	// rate. Filtering after the rotation keeps the filter in the world frame, where the
+	// pilot's intent is constant: before it, a spinning airframe makes the heading-frame
+	// stick rotate and the filter lags it into a direction error.
+	(void)yaw_setpoint;
+	Sticks::rotateIntoHeadingFrameXY(stick_xy, yaw, NAN);
 	_man_input_filter.setParameters(static_cast<uint64_t>(dt * 1e6f),
 					static_cast<uint64_t>(math::max(_param_mc_man_tilt_tau.get(), 0.f) * 1e6f));
 	stick_xy = _man_input_filter.update(stick_xy);
-	Sticks::rotateIntoHeadingFrameXY(stick_xy, yaw, yaw_setpoint);
 	return stick_xy * _maximum_acceleration;
 }
 
@@ -83,6 +92,8 @@ Vector2f StickTiltXY::generateAccelerationSetpointsForAltitudeCruise(Vector2f st
 	}
 
 	Vector2f global_altitude_cruise_acceleration = _altitude_cruise_acceleration;
-	Sticks::rotateIntoHeadingFrameXY(global_altitude_cruise_acceleration, yaw, yaw_setpoint);
+	// Current yaw, not the held setpoint - see generateAccelerationSetpoints().
+	(void)yaw_setpoint;
+	Sticks::rotateIntoHeadingFrameXY(global_altitude_cruise_acceleration, yaw, NAN);
 	return global_altitude_cruise_acceleration;
 }

@@ -215,6 +215,7 @@ private:
 	 */
 	AlphaFilter<float> _output_lpf_yaw;
 	uint8_t _takeoff_state{0};
+	float _takeoff_tilt_limit{NAN};
 	hrt_abstime _last_status_publish{0};
 
 	// Last values actually published, mirrored into mc_controller_status. Recorded

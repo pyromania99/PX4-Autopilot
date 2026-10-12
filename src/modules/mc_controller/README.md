@@ -185,23 +185,48 @@ Three things to wire up if you use it:
   call `invalidateStage()` when you leave `Trajectory` level
 - delegate `fillLocalPositionSetpoint()`, passing your attitude and thrust setpoints
 
-### It owns the only integrator in this module
+### It owns the position/velocity integrator
 
-`MC_OL_XY_I` / `MC_OL_Z_I`, both **shipping at zero**, bounded by `MC_OL_I_LIM`.
-They integrate POSITION error, not velocity error as stock `mc_pos_control` does —
-these laws are not cascades, so `pos_d` acts on velocity error directly and at a
-steady offset the velocity error is zero. A velocity integrator would never see it.
+`MC_OL_XY_I` / `MC_OL_Z_I`, bounded by `MC_OL_I_LIM`. They integrate the error
+against the **equivalent velocity setpoint**, the same place stock `mc_pos_control`
+integrates. These laws compute `pos_p*e_p + pos_d*(v_ff - v)`, which is
+`pos_d*(v_sp - v)` with `v_sp = v_ff + (pos_p/pos_d)*e_p`, i.e. the stock cascade
+written in one line. `limitVelocitySetpoint()` already builds that `v_sp`, and
+the integrator runs on `v_sp - v` after the limit. On a hold axis that error is
+`(pos_p/pos_d)*e_p`, so a standing offset is trimmed. On a velocity-only axis it
+is the rate error, so a bias cannot swallow a stick command.
 
-Why zero by default: a PD law holds position perfectly in simulation, where the
-airframe is symmetric and there is no wind, and settles at a standing offset on real
-hardware, where CG offset, thrust asymmetry and estimator tilt bias are always
-present. The offset is `disturbance / Kp` — at `MC_EIG_XY_P = 0.5`, a 1 deg tilt bias
-is 0.34 m — and no amount of tuning removes it, because `Kp` is capped by loop
-separation. Enabling this is a hardware step, not a simulation one.
+It used to integrate position error, which zeroed the term whenever the mode
+commanded no position on that axis — ALTCTL and POSCTL with the throttle stick
+deflected. With hover thrust wrong by 0.13, full stick-down then produced no
+descent at all (2026-09-24 spin flights).
 
-Altitude is the exception: `mc_hover_thrust_estimator` already supplies the trim, so
-`MC_OL_Z_I` covers only what it does not — the window before it converges, and flight
-regimes where it never validates.
+`MC_OL_Z_I` ships at **2.0**, stock's `MPC_Z_VEL_I_ACC`. `mc_hover_thrust_estimator`
+normally supplies the vertical trim, but it only runs above 1 m `dist_bottom`, so
+low indoor flight relies on this term. `MC_OL_XY_I` ships at **zero**: a PD law
+holds position perfectly in simulation and settles at `disturbance / Kp` on
+hardware — at `MC_EIG_XY_P = 0.5`, a 1 deg tilt bias is 0.34 m. Enabling it is a
+hardware step. Note that no world-frame integrator can cancel a body-fixed lean
+while the vehicle spins, since in the world frame that force rotates at the spin
+rate.
+
+## Roll/pitch torque trim (`TorqueTrim`)
+
+This is the attitude-level integral, shared by `MC_CTRL_ALG=1` and `3` through
+composition, like `RateLimits`. It removes a constant body-fixed torque: a CG offset or a
+weak motor that a PD attitude law can only hold with a standing attitude error. It
+**integrates the roll/pitch torque the law already commands**, not the attitude error,
+and moves it into a trim. That converges whatever the loop's own gain and phase are.
+While spinning, the loop rotates the attitude error relative to the torque by
+`atan(ATT_D*r/ATT_P)` plus the gyroscopic coupling, and for the eigen law by the seat
+angle as well, and an attitude-error integral diverges once that passes 90°.
+`TorqueTrimTest` asserts both halves of that claim.
+
+It is applied last, after the seat and the actuator lead, and before the output clamp.
+It trims roll and pitch only, freezes on allocator saturation and at the clamp, and
+resets with `reset_integrals`. `MC_ATT_TRIM_I` ships at 0 and `MC_ATT_TRIM_LIM` at 0.1.
+It is logged as `mc_controller_status.torque_trim`, and for alg 1 also in
+`rate_ctrl_status`.
 
 ## One work queue
 

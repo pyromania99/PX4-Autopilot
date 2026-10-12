@@ -95,7 +95,8 @@ void LoggedTopics::add_default_topics()
 	add_topic("vehicle_attitude", 50);
 	add_topic("vehicle_global_position", 200);
 	add_topic("vehicle_gps_position", 100);
-	add_topic("vehicle_local_position", 100);
+	add_topic("vehicle_local_position", 20);	// final EKF output; estimator* internals are SDLOG_PROFILE +2
+	add_topic("vehicle_air_data", 100);	// baro altitude: EKF2_HGT_REF is baro, and spin-flight height drifted metres from mocap
 	add_topic("sensor_combined");
 	add_topic("sensor_selection");
 	add_topic("wind", 1000);
@@ -103,11 +104,21 @@ void LoggedTopics::add_default_topics()
 	// External vision pose - kept deliberately: it is an input to the estimator and
 	// the only pose source that does not come from the EKF itself.
 	//
-	// UNTHROTTLED on purpose. EKF2_EV_DELAY is calibrated by cross-correlating this
-	// against the gyro (notes/HARDWARE_READINESS.md 2b), and the answer is of order
-	// 10 ms, so a 30 ms log interval cannot resolve it. The bridge publishes at
-	// ~119 Hz, which costs a fraction of what sensor_gyro_fifo did.
-	add_optional_topic("vehicle_visual_odometry");
+	// Throttled to 200 ms: at the ~3 rad/s spin flown so far, EV delay costs about a
+	// degree of yaw, so the EKF2_EV_DELAY fit (which needs every ~119 Hz sample, see
+	// notes/HARDWARE_READINESS.md 2b) is deferred. Unthrottle it for that run.
+	//
+	// NOT optional: an optional topic is dropped for the whole log if it is not yet
+	// published when the logger starts, and arming within seconds of boot starts the
+	// logger before the bridge's MAVLink stream is up (log_3 on 2026-09-24 lost EV
+	// entirely that way while EKF2 fused it the whole flight).
+	add_topic("vehicle_visual_odometry", 200);
+
+	// MAVLink timesync: estimated offset and round-trip time per link. Until this
+	// converges, every external stamp (vehicle_visual_odometry.timestamp_sample
+	// included) is replaced by its arrival time, so it is the first thing to check
+	// when an EV delay looks wrong.
+	add_topic_multi("timesync_status", 1000, 3);
 
 	// --- control chain ----------------------------------------------------------
 	add_optional_topic("mc_controller_status", 20);

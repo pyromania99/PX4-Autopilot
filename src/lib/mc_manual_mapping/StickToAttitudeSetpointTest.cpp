@@ -286,7 +286,13 @@ void runDifferentialSweep(bool vtol, int32_t throttle_curve_param)
 	ReferenceStickToAttitude reference{&harness};
 
 	extracted.setVtol(vtol);
-	reference.setVtol(vtol);
+	// DELIBERATE divergence from pre-extraction stock, and the only one: the yaw-error tilt
+	// correction used to run for VTOL only and now runs for every vehicle (see
+	// StickToAttitudeSetpoint::update() and MAN_NORTH_REF - a multicopter that does not
+	// control heading carries an unbounded yaw error). New multicopter behaviour is therefore
+	// exactly old VTOL behaviour, so the verbatim reference is driven down its VTOL path
+	// rather than edited. Everything else must still match bit for bit.
+	reference.setVtol(true);
 
 	// Re-read MPC_THR_CURVE after the param_set above (cascades to both children).
 	harness.updateParams();

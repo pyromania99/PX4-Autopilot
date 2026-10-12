@@ -113,7 +113,9 @@ void StickAccelerationXY::generateSetpoints(Vector2f stick_xy, const float yaw, 
 		stick_xy(0) *= _param_mpc_vel_man_back.get() / _param_mpc_vel_manual.get();
 	}
 
-	Sticks::rotateIntoHeadingFrameXY(stick_xy, yaw, yaw_sp);
+	// Current yaw, never the held yaw setpoint: see StickTiltXY::generateAccelerationSetpoints().
+	(void)yaw_sp;
+	Sticks::rotateIntoHeadingFrameXY(stick_xy, yaw, NAN);
 	_acceleration_setpoint = stick_xy.emult(acceleration_scale);
 
 	if (_collision_prevention.is_active()) {

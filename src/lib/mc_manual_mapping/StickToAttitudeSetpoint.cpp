@@ -189,14 +189,18 @@ void StickToAttitudeSetpoint::update(const manual_control_setpoint_s &manual_con
 	//   yaw = atan(-2 * sin(b) * cos(b) * sin^2(a/2) / (1 - 2 * cos^2(b) * sin^2(a/2))).
 	const Quatf q_sp_yaw(cosf(yaw_setpoint / 2.f), 0.f, 0.f, sinf(yaw_setpoint / 2.f));
 
-	if (_vtol) {
-		// Modify the setpoints for roll and pitch such that they reflect the user's intention even
-		// if a large yaw error(yaw_sp - yaw) is present. In the presence of a yaw error constructing
-		// an attitude setpoint from the yaw setpoint will lead to unexpected attitude behaviour from
-		// the user's view as the tilt will not be aligned with the heading of the vehicle.
-
-		AttitudeControlMath::correctTiltSetpointForYawError(q_sp_rp, q, q_sp_yaw);
-	}
+	// Modify the setpoints for roll and pitch such that they reflect the user's intention even
+	// if a large yaw error(yaw_sp - yaw) is present. In the presence of a yaw error constructing
+	// an attitude setpoint from the yaw setpoint will lead to unexpected attitude behaviour from
+	// the user's view as the tilt will not be aligned with the heading of the vehicle.
+	//
+	// Applied to every vehicle, not only VTOL. Upstream gated this on _vtol because only a VTOL
+	// was expected to carry a yaw error worth correcting. A multicopter that does not control
+	// its heading carries an unbounded one - _yaw_setpoint_stabilized stays locked while the
+	// airframe turns - and ManualControl's north reference (MAN_NORTH_REF) relies on the tilt
+	// being built around the CURRENT heading. Without this the flown tilt direction turns at
+	// exactly -1x the yaw rate. When yaw is held, the correction is a no-op.
+	AttitudeControlMath::correctTiltSetpointForYawError(q_sp_rp, q, q_sp_yaw);
 
 	// Align the desired tilt with the yaw setpoint
 	Quatf q_sp = q_sp_yaw * q_sp_rp;

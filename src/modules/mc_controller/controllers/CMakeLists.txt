@@ -49,6 +49,8 @@ px4_add_library(MulticopterControllers
 	Seat.hpp
 	TemplateController.cpp
 	TemplateController.hpp
+	TorqueTrim.cpp
+	TorqueTrim.hpp
 )
 target_compile_options(MulticopterControllers PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
 target_include_directories(MulticopterControllers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -74,4 +76,8 @@ px4_add_functional_gtest(SRC EigenControllerTest.cpp
 # ControllerState - so it is tested without a vehicle. Functional rather than unit: it
 # uses DEFINE_PARAMETERS, so the live parameter system is required.
 px4_add_functional_gtest(SRC SeatTest.cpp
+	LINKLIBS MulticopterControllers MulticopterControllerApi McControllerTrajectoryStage)
+
+# The torque trim is a standalone per-axis integral, tested without a vehicle like the seat.
+px4_add_functional_gtest(SRC TorqueTrimTest.cpp
 	LINKLIBS MulticopterControllers MulticopterControllerApi McControllerTrajectoryStage)

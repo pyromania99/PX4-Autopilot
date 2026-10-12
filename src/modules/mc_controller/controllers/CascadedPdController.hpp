@@ -62,6 +62,7 @@
 #pragma once
 
 #include "RateLimits.hpp"
+#include "TorqueTrim.hpp"
 
 #include <MulticopterControllerBase.hpp>
 #include <TrajectoryStage.hpp>
@@ -96,15 +97,18 @@ public:
 	void setAutotuneRateSetpoint(const matrix::Vector3f &rate_sp) { _autotune_rate_sp = rate_sp; }
 	void clearAutotuneRateSetpoint() { _autotune_rate_sp.setZero(); }
 
-	/// For the module's rate_ctrl_status publication. A PD law has no integrators, so
-	/// this reports zeros rather than leaving the topic unpublished - mc_autotune and
-	/// the log consumers expect it to keep arriving.
+	/// For the module's rate_ctrl_status publication. The only inner-loop integral this law
+	/// has is the roll/pitch torque trim (MC_ATT_TRIM_*), reported in the rate integrator
+	/// slots in the same normalized torque units stock uses there; yaw is never trimmed.
 	void getRateControlStatus(rate_ctrl_status_s &status) const
 	{
-		status.rollspeed_integ = 0.f;
-		status.pitchspeed_integ = 0.f;
+		status.rollspeed_integ = _torque_trim.trim()(0);
+		status.pitchspeed_integ = _torque_trim.trim()(1);
 		status.yawspeed_integ = 0.f;
 	}
+
+	/// Roll/pitch allocator saturation freezes the torque trim.
+	void setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &feedback) override;
 
 	/// For the module's vehicle_local_position_setpoint publication.
 	void getLocalPositionSetpoint(vehicle_local_position_setpoint_s &sp) const;
@@ -152,7 +156,7 @@ private:
 
 	/**
 	 * Stages 1 and 2-magnitude, shared with the other laws in this module: the per-axis
-	 * PD, the position integrator, the lateral clamp and the collective. Opting in is
+	 * PD, the velocity integrator, the lateral clamp and the collective. Opting in is
 	 * composition - holding one of these and delegating - so opting out would mean simply
 	 * not having it, as TemplateController does.
 	 *
@@ -169,6 +173,11 @@ private:
 	 * the rate setpoint is the pilot's own and MC_ACRO_*_MAX already bounds it.
 	 */
 	RateLimits _rate_limits;
+
+	/// Body-frame roll/pitch torque trim, the attitude-level integral (MC_ATT_TRIM_*).
+	/// Shared with the eigen law; see TorqueTrim.hpp for why it integrates the held torque
+	/// rather than the attitude error.
+	TorqueTrim _torque_trim;
 
 	// Cached gains, so update() never touches the parameter system.
 	matrix::Vector3f _pos_p{};	///< [1/s^2] (MC_PD_XY_P, MC_PD_XY_P, MC_PD_Z_P)

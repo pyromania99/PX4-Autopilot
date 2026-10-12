@@ -49,6 +49,7 @@ EigenController::EigenController(ModuleParams *parent) :
 	_pole(this),
 	_lead(this),
 	_rate_limits(this),
+	_torque_trim(this),
 	_trajectory_stage(this)
 {
 	EigenController::updateParams();
@@ -90,7 +91,7 @@ void EigenController::updateParams()
 
 void EigenController::reset()
 {
-	// No integrators and no filters. What has to be dropped is the cached stage output
+	// No filters; the torque trim is the one integral. What has to be dropped is the cached stage output
 	// and, crucially, the angle-error history: a stale error from the previous mode
 	// differentiates into exactly the spike _first_attitude_update exists to prevent.
 	_roll_setpoint = 0.f;
@@ -118,13 +119,14 @@ void EigenController::reset()
 	// measured.
 	_seat.reset();
 	_lead.reset();
+	_torque_trim.reset();
 }
 
 void EigenController::stepTrajectoryToAcceleration(const mc_ctrl::ControllerState &state,
 		const mc_ctrl::ControllerCommand &command)
 {
 	// Stage 1 and the lateral clamp live in the shared trajectory stage: they were
-	// identical across every law in this module, and that is now where the position
+	// identical across every law in this module, and that is now where the velocity
 	// integrator lives too. The gains stay here - MC_EIG_* is this law's own tuning.
 	//
 	// This function deliberately stops short of the tilt setpoint. Everything it computes is
@@ -307,7 +309,22 @@ Vector3f EigenController::eigenTorque(const Vector3f &rate_setpoint, const Vecto
 	Vector3f torque;
 	torque(0) = _inertia(0) * roll_accel_des + (_inertia(2) - _inertia(1)) * q * r;
 	torque(1) = _inertia(1) * pitch_accel_des + (_inertia(0) - _inertia(2)) * p * r;
-	torque(2) = _inertia(2) * yaw_accel_des + (_inertia(1) - _inertia(0)) * p * q;
+	// YAW TORQUE IS COMMANDED AS EXACTLY ZERO, deliberately, and yaw_accel_des above exists
+	// only to keep the feedback linearization well posed: M_dyn(2,2) and A_r(2,2) cancel
+	// there, so the yaw row of the algebra is an identity that has to be written down for
+	// the block to be square, not a control law. Commanding zero is a CHOICE, not a
+	// physical limit: CA_ROTOR*_KM is +-0.05 on the flight airframe, so the mixer could
+	// allocate yaw. It is surrendered on purpose. A multirotor down a rotor cannot hold
+	// heading, and authority spent on a yaw demand it cannot win is authority taken from the
+	// roll/pitch that holds position - the same argument the file header makes for dropping
+	// yaw at Trajectory level. No yaw FEEDBACK is lost either: yaw_accel_des is
+	// beta*rate_setpoint with no rate-error term, so this removes a commanded rotation, not
+	// a stabilising one.
+	//
+	// The gyroscopic term (Iyy - Ixx)*p*q goes with it. On a symmetric quad it is ~0 anyway,
+	// and it is a correction to a torque this law no longer asks for.
+	(void)yaw_accel_des;
+	torque(2) = 0.f;
 
 	return torque;
 }
@@ -315,14 +332,15 @@ Vector3f EigenController::eigenTorque(const Vector3f &rate_setpoint, const Vecto
 bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctrl::ControllerCommand &command,
 			     float dt, mc_ctrl::ControllerOutput &output)
 {
-	// HARD CONTRACT from the interface. The shared stage's position integrator is the one
-	// thing here that genuinely winds up, and zeroing it on the ground is what keeps the
-	// vehicle from leaping at takeoff. The cached stage outputs and the angle-error history
-	// go too, so a mode change cannot carry either across.
+	// HARD CONTRACT from the interface. The shared stage's velocity integrator and the
+	// torque trim are what genuinely wind up, and zeroing them on the ground is what keeps
+	// the vehicle from leaping or leaning at takeoff. The cached stage outputs and the
+	// angle-error history go too, so a mode change cannot carry either across.
 	if (command.reset_integrals || !state.armed) {
 		_rate_setpoint.setZero();
 		_trajectory_stage.resetIntegral();
 		_trajectory_stage.invalidateStage();
+		_torque_trim.reset();
 		_first_attitude_update = true;
 	}
 
@@ -531,6 +549,9 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	// wants here is dimensionless and physical torque would be silently misinterpreted.
 	Vector3f torque = _torque * _inv_torque_max;
 
+	// After the seat and the lead, before the clamp: see _torque_trim.
+	torque = _torque_trim.apply(torque, dt);
+
 	for (int i = 0; i < 3; i++) {
 		torque(i) = PX4_ISFINITE(torque(i)) ? math::constrain(torque(i), -1.f, 1.f) : 0.f;
 	}
@@ -547,7 +568,6 @@ bool EigenController::update(const mc_ctrl::ControllerState &state, const mc_ctr
 	output.attitude_setpoint = _attitude_setpoint;
 	output.valid = true;
 
-	(void)dt;	// the only rate-dependent term uses dt_attitude, not the gyro dt
 	return true;
 }
 
@@ -569,6 +589,7 @@ void EigenController::setAllocatorFeedback(const mc_ctrl::AllocatorFeedback &fee
 				  || feedback.saturation_positive(1) || feedback.saturation_negative(1);
 	_seat.setSaturated(rp_saturated);
 	_pole.setSaturated(rp_saturated);
+	_torque_trim.setSaturated(rp_saturated);
 }
 
 void EigenController::fillStatus(mc_controller_status_s &status) const
@@ -593,4 +614,6 @@ void EigenController::fillStatus(mc_controller_status_s &status) const
 	status.pole_alpha_b = _pole.alphaB();
 	status.pole_theta_hat = _pole.thetaBHat();
 	status.pole_cost = _pole.cost();
+	status.torque_trim[0] = _torque_trim.trim()(0);
+	status.torque_trim[1] = _torque_trim.trim()(1);
 }

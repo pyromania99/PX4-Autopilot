@@ -431,7 +431,22 @@ Vector3f TiltEigenController::eigenTorque(const Vector3f &rate_setpoint, const V
 	Vector3f torque;
 	torque(0) = _inertia(0) * roll_accel_des + (_inertia(2) - _inertia(1)) * q * r;
 	torque(1) = _inertia(1) * pitch_accel_des + (_inertia(0) - _inertia(2)) * p * r;
-	torque(2) = _inertia(2) * yaw_accel_des + (_inertia(1) - _inertia(0)) * p * q;
+	// YAW TORQUE IS COMMANDED AS EXACTLY ZERO, deliberately, and yaw_accel_des above exists
+	// only to keep the feedback linearization well posed: M_dyn(2,2) and A_r(2,2) cancel
+	// there, so the yaw row of the algebra is an identity that has to be written down for
+	// the block to be square, not a control law. Commanding zero is a CHOICE, not a
+	// physical limit: CA_ROTOR*_KM is +-0.05 on the flight airframe, so the mixer could
+	// allocate yaw. It is surrendered on purpose. A multirotor down a rotor cannot hold
+	// heading, and authority spent on a yaw demand it cannot win is authority taken from the
+	// roll/pitch that holds position - the same argument the file header makes for dropping
+	// yaw at Trajectory level. No yaw FEEDBACK is lost either: yaw_accel_des is
+	// beta*rate_setpoint with no rate-error term, so this removes a commanded rotation, not
+	// a stabilising one.
+	//
+	// The gyroscopic term (Iyy - Ixx)*p*q goes with it. On a symmetric quad it is ~0 anyway,
+	// and it is a correction to a torque this law no longer asks for.
+	(void)yaw_accel_des;
+	torque(2) = 0.f;
 
 	return torque;
 }

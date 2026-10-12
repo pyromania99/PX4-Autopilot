@@ -671,6 +671,7 @@ void RCUpdate::UpdateManualSwitches(const hrt_abstime &timestamp_sample)
 void RCUpdate::UpdateCachedYaw()
 {
 	vehicle_attitude_s vehicle_attitude;
+
 	if (_vehicle_attitude_sub.copy(&vehicle_attitude)) {
 		// Extract yaw angle from quaternion
 		matrix::Quatf q(vehicle_attitude.q);
@@ -682,33 +683,33 @@ void RCUpdate::UpdateCachedYaw()
 
 void RCUpdate::UpdateManualControlInput(const hrt_abstime &timestamp_sample)
 {
-    manual_control_setpoint_s manual_control_input{};
-    manual_control_input.timestamp_sample = timestamp_sample;
-    manual_control_input.data_source = manual_control_setpoint_s::SOURCE_RC;
+	manual_control_setpoint_s manual_control_input{};
+	manual_control_input.timestamp_sample = timestamp_sample;
+	manual_control_input.data_source = manual_control_setpoint_s::SOURCE_RC;
 
-    // limit controls
-    float roll_ned = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
-    float pitch_ned = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
+	// limit controls
+	float roll_ned = get_rc_value(rc_channels_s::FUNCTION_ROLL,    -1.f, 1.f);
+	float pitch_ned = get_rc_value(rc_channels_s::FUNCTION_PITCH,   -1.f, 1.f);
 
-    // Remove NED to body frame transformation
-    manual_control_input.roll = roll_ned;
-    manual_control_input.pitch = pitch_ned;
+	// Remove NED to body frame transformation
+	manual_control_input.roll = roll_ned;
+	manual_control_input.pitch = pitch_ned;
 
-    manual_control_input.yaw = get_rc_value(rc_channels_s::FUNCTION_YAW,     -1.f, 1.f);
-    manual_control_input.throttle = get_rc_value(rc_channels_s::FUNCTION_THROTTLE, -1.f, 1.f);
-    manual_control_input.flaps = get_rc_value(rc_channels_s::FUNCTION_FLAPS,   -1.f, 1.f);
-    manual_control_input.aux1  = get_rc_value(rc_channels_s::FUNCTION_AUX_1,   -1.f, 1.f);
-    manual_control_input.aux2  = get_rc_value(rc_channels_s::FUNCTION_AUX_2,   -1.f, 1.f);
-    manual_control_input.aux3  = get_rc_value(rc_channels_s::FUNCTION_AUX_3,   -1.f, 1.f);
-    manual_control_input.aux4  = get_rc_value(rc_channels_s::FUNCTION_AUX_4,   -1.f, 1.f);
-    manual_control_input.aux5  = get_rc_value(rc_channels_s::FUNCTION_AUX_5,   -1.f, 1.f);
-    manual_control_input.aux6  = get_rc_value(rc_channels_s::FUNCTION_AUX_6,   -1.f, 1.f);
-    manual_control_input.valid = _rc_calibrated;
+	manual_control_input.yaw = get_rc_value(rc_channels_s::FUNCTION_YAW,     -1.f, 1.f);
+	manual_control_input.throttle = get_rc_value(rc_channels_s::FUNCTION_THROTTLE, -1.f, 1.f);
+	manual_control_input.flaps = get_rc_value(rc_channels_s::FUNCTION_FLAPS,   -1.f, 1.f);
+	manual_control_input.aux1  = get_rc_value(rc_channels_s::FUNCTION_AUX_1,   -1.f, 1.f);
+	manual_control_input.aux2  = get_rc_value(rc_channels_s::FUNCTION_AUX_2,   -1.f, 1.f);
+	manual_control_input.aux3  = get_rc_value(rc_channels_s::FUNCTION_AUX_3,   -1.f, 1.f);
+	manual_control_input.aux4  = get_rc_value(rc_channels_s::FUNCTION_AUX_4,   -1.f, 1.f);
+	manual_control_input.aux5  = get_rc_value(rc_channels_s::FUNCTION_AUX_5,   -1.f, 1.f);
+	manual_control_input.aux6  = get_rc_value(rc_channels_s::FUNCTION_AUX_6,   -1.f, 1.f);
+	manual_control_input.valid = _rc_calibrated;
 
-    // publish manual_control_input topic
-    manual_control_input.timestamp = hrt_absolute_time();
-    _manual_control_input_pub.publish(manual_control_input);
-    _last_manual_control_input_publish = manual_control_input.timestamp;
+	// publish manual_control_input topic
+	manual_control_input.timestamp = hrt_absolute_time();
+	_manual_control_input_pub.publish(manual_control_input);
+	_last_manual_control_input_publish = manual_control_input.timestamp;
 }
 
 int RCUpdate::task_spawn(int argc, char *argv[])

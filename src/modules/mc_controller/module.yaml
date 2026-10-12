@@ -1255,18 +1255,22 @@ parameters:
 
       MC_OL_XY_I:
         description:
-          short: Trajectory stage horizontal position integral gain
+          short: Trajectory stage horizontal velocity integral gain
           long: |
-            Rate of change of desired horizontal acceleration per metre of horizontal position
-            error. Removes the standing offset a PD law settles into against a constant
-            disturbance - wind, a laterally offset centre of gravity, thrust asymmetry, or an
-            estimator tilt bias, all of which look identical to the controller.
+            Corrective horizontal acceleration in m/s^2 per metre of integrated velocity error,
+            the same quantity as stock MPC_XY_VEL_I_ACC. The error is taken against the
+            equivalent velocity setpoint - the commanded velocity plus (XY_P/XY_D) times the
+            position error, after the MPC_XY_VEL_MAX limit - so it trims a standing position
+            offset in position hold and a standing rate error while a stick is deflected. It
+            removes the offset a PD law settles into against a constant world-frame
+            disturbance: wind, or a lean the vehicle holds while not yawing.
 
-            Only active on axes where the flight mode actually commands a position. Altitude modes
-            command no horizontal position, so this has no effect there.
+            It cannot cancel a disturbance that rotates with the body while the vehicle spins,
+            such as a CG offset or an estimator tilt bias at yaw rate: in the world frame that
+            is a force rotating at the spin rate, far faster than this term.
 
             Zero by default: the horizontal offset is invisible in simulation, so a nonzero default
-            would be untested. Raise it on hardware once a hover log shows the drift.
+            would be untested. Stock uses 0.4.
         type: float
         default: 0.0
         min: 0.0
@@ -1276,24 +1280,74 @@ parameters:
 
       MC_OL_Z_I:
         description:
-          short: Trajectory stage vertical position integral gain
+          short: Trajectory stage vertical velocity integral gain
           long: |
-            Rate of change of desired vertical acceleration per metre of altitude error.
+            Corrective vertical acceleration in m/s^2 per metre of integrated velocity error,
+            the same quantity and default as stock MPC_Z_VEL_I_ACC. The error is taken against
+            the equivalent velocity setpoint - the commanded climb rate plus (Z_P/Z_D) times the
+            altitude error, after the MPC_Z_VEL_MAX_UP/DN limits - so it is active in altitude
+            hold and while the throttle stick commands a climb or descent.
 
-            Altitude is normally trimmed by the hover thrust estimator rather than by an
-            integrator: hover thrust is by definition the collective that produces 1 g, so once the
-            estimate converges the steady-state altitude error is already zero. This gain covers
-            what the estimator does not - the window before it converges, the periods where it is
-            invalid or heavily de-weighted, and sustained aggressive flight where its measurement
-            noise scaling keeps it from ever validating.
+            It absorbs whatever the hover thrust is wrong by. The hover thrust estimator only
+            runs once the vehicle is more than 1 m above ground (dist_bottom), so indoor
+            flights below that use MPC_THR_HOVER as-is; with this at zero, a hover thrust that
+            is too high becomes a standing climb bias that cancels a descent command. Both
+            shipped laws share this term, and it is continuous across hover-thrust estimate
+            updates.
 
-            Zero by default, for the same reason as the horizontal gain.
+            With the laws' own gains this stays well damped: the closed vertical loop is
+            s^3 + Z_D s^2 + (Z_P + I) s + I Z_P / Z_D.
         type: float
-        default: 0.0
+        default: 2.0
         min: 0.0
         max: 5.0
         decimal: 3
         increment: 0.005
+
+      MC_ATT_TRIM_I:
+        description:
+          short: Roll/pitch torque trim integral gain
+          long: |
+            The attitude-level integral of MC_CTRL_ALG=1 and 3. It removes a constant body-fixed
+            torque, such as a centre of gravity off the thrust centroid or one weaker motor,
+            that a PD attitude law can only hold against with a standing attitude error.
+
+            It integrates the roll/pitch torque the law is already commanding and moves it into
+            a trim: the trim grows at this rate times the held torque until the law no longer
+            has to push. Without spin that is an ordinary attitude integral, since the held
+            torque is the attitude gain times the attitude error. Unlike an integral of the
+            attitude error, it stays stable while the vehicle spins, where the loop rotates the
+            error relative to the torque by up to 90 deg and more. 1/this is the time constant
+            the trim converges with. Yaw is never trimmed.
+
+            Frozen while the allocator saturates roll or pitch, or while the output clamp is
+            already cutting the torque. Reset on the ground, when disarmed and on every
+            control-level change. Logged in mc_controller_status.torque_trim.
+
+            Zero by default, so it is enabled on hardware on purpose. 0.5 to 1.0 is a sensible
+            start.
+        type: float
+        default: 0.0
+        min: 0.0
+        max: 5.0
+        unit: 1/s
+        decimal: 2
+        increment: 0.05
+
+      MC_ATT_TRIM_LIM:
+        description:
+          short: Roll/pitch torque trim limit
+          long: |
+            Largest normalized torque the trim may apply on roll or pitch. A real
+            centre-of-gravity offset needs a few hundredths (0.010 to 0.018 on the 2026-09-24
+            spin flights), so this bounds what a wrong trim can cost without restricting the
+            real one.
+        type: float
+        default: 0.1
+        min: 0.0
+        max: 0.5
+        decimal: 3
+        increment: 0.01
 
       MC_OL_I_LIM:
         description:

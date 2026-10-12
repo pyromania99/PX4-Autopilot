@@ -472,13 +472,20 @@ void MulticopterController::publishIntermediateTopics(const CommandFrontEnd::Pub
 		_vehicle_rates_setpoint_pub.publish(sp);
 	}
 
-	// takeoff_status feeds land_detector.
+	// takeoff_status feeds land_detector, and its tilt_limit feeds the flight tasks:
+	// StickAccelerationXY::applyTiltLimit() caps the Position-mode stick acceleration at
+	// g*tan(tilt_limit). Leaving it at the zero-initialised default capped it at zero, so
+	// Position mode ignored the sticks entirely. Same field and cadence as mc_pos_control:
+	// republished whenever the slewed limit moves.
 	const uint8_t takeoff_state = static_cast<uint8_t>(_front_end.takeoffState());
+	const float tilt_limit = _front_end.tiltLimit();
 
-	if (takeoff_state != _takeoff_state) {
+	if ((takeoff_state != _takeoff_state) || !isEqualF(tilt_limit, _takeoff_tilt_limit)) {
 		_takeoff_state = takeoff_state;
+		_takeoff_tilt_limit = tilt_limit;
 		takeoff_status_s status{};
 		status.takeoff_state = takeoff_state;
+		status.tilt_limit = tilt_limit;
 		status.timestamp = hrt_absolute_time();
 		_takeoff_status_pub.publish(status);
 	}
